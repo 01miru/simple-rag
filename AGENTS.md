@@ -1,0 +1,1 @@
+Gdy zadanie wymaga wiedzy z dokumentów w `knowlage/`, użyj narzędzia MCP `search_knowledge`, jeśli jest dostępne. W odpowiedzi podawaj ścieżki dokumentów źródłowych. Po zmianie dokumentów uruchom `uv run rag index` przed kolejnym wyszukiwaniem.

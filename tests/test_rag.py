@@ -1,0 +1,85 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from rag import chunks, index, search
+
+
+class FakeVector:
+    def __init__(self, values):
+        self.values = values
+
+    def tolist(self):
+        return self.values
+
+
+class FakeModel:
+    def encode(self, texts, normalize_embeddings=True):
+        def vector(text):
+            return FakeVector([1.0, 0.0] if "kot" in text.lower() else [0.0, 1.0])
+        return vector(texts) if isinstance(texts, str) else [vector(text) for text in texts]
+
+
+class RagTest(unittest.TestCase):
+    def test_chunks_are_bounded_and_preserve_text(self):
+        text = "a" * 2500
+        parts = list(chunks(text))
+        self.assertTrue(all(len(part) <= 1000 for part in parts))
+        self.assertEqual(parts[0] + "".join(part[150:] for part in parts[1:]), text)
+
+    @patch("rag.model", return_value=FakeModel())
+    def test_index_search_rebuild_and_empty(self, _model):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "knowlage"
+            source.mkdir()
+            self.assertIn("Brak indeksu", search(root, "kot"))
+            (source / "kot.md").write_text("Kot lubi mleko.", encoding="utf-8")
+            (source / "pies.md").write_text("Pies lubi spacery.", encoding="utf-8")
+            self.assertEqual(index(root), 2)
+            _model.reset_mock()
+            self.assertEqual(index(root), 0)
+            _model.assert_not_called()
+            self.assertTrue(search(root, "kot").startswith("Źródło: knowlage/kot.md"))
+            (source / "pies.md").write_text("Pies śpi w domu.", encoding="utf-8")
+            self.assertEqual(index(root), 1)
+            self.assertIn("Pies śpi w domu.", search(root, "pies"))
+            self.assertNotIn("Pies lubi spacery.", search(root, "pies"))
+            (source / "kot.md").unlink()
+            index(root)
+            self.assertNotIn("kot.md", search(root, "kot"))
+            (source / "pies.md").unlink()
+            self.assertEqual(index(root), 0)
+            self.assertIn("Brak dokumentów", search(root, "kot"))
+
+    def test_batching_and_recovery_after_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "knowlage"
+            source.mkdir()
+            (source / "large.md").write_text("kot " * 20000, encoding="utf-8")
+            fake = FakeModel()
+            calls = []
+
+            def encode(texts, normalize_embeddings=True):
+                calls.append(len(texts))
+                if len(calls) == 2:
+                    raise RuntimeError("interrupted")
+                return fake.encode(texts, normalize_embeddings)
+
+            with patch("rag.model") as mocked:
+                mocked.return_value.encode.side_effect = encode
+                with self.assertRaises(RuntimeError):
+                    index(root)
+            self.assertEqual(calls[0], 64)
+            with patch("rag.model", return_value=fake):
+                count = index(root)
+                import lancedb
+                table = lancedb.connect(str(root / ".rag" / "lancedb")).open_table("knowledge")
+                self.assertEqual(table.count_rows(), count)
+                self.assertGreater(count, 64)
+
+
+if __name__ == "__main__":
+    unittest.main()
