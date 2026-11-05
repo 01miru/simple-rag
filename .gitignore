@@ -11,3 +11,6 @@ wheels/
 
 # Lokalny indeks wiedzy
 .rag/
+
+# Lokalne dokumenty wiedzy
+knowlage/
