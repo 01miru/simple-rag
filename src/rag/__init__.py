@@ -47,8 +47,14 @@ def index(root: Path) -> int:
     db = lancedb.connect(str(root / ".rag" / "lancedb"))
     manifest_path = root / ".rag" / "manifest.json"
     exists = TABLE in db.table_names()
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
-    if manifest.get("version") != INDEX_VERSION or (manifest.get("files") and not exists):
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest_path.exists()
+        else {}
+    )
+    if manifest.get("version") != INDEX_VERSION or (
+        manifest.get("files") and not exists
+    ):
         if exists:
             db.drop_table(TABLE)
             exists = False
@@ -86,8 +92,10 @@ def index(root: Path) -> int:
         fragments = iter(chunks(text))
         while batch := list(islice(fragments, BATCH_SIZE)):
             vectors = model().encode(batch, normalize_embeddings=True)
-            records = [{"path": name, "text": fragment, "vector": vector.tolist()}
-                       for fragment, vector in zip(batch, vectors, strict=True)]
+            records = [
+                {"path": name, "text": fragment, "vector": vector.tolist()}
+                for fragment, vector in zip(batch, vectors, strict=True)
+            ]
             if exists:
                 db.open_table(TABLE).add(records)
             else:
@@ -115,13 +123,21 @@ def search(root: Path, query: str, limit: int = 5) -> str:
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
     vector = model().encode(query, normalize_embeddings=True).tolist()
     results = table.search(vector).limit(limit).to_list()
-    return "\n\n---\n\n".join(f"Źródło: {row['path']}\n{row['text']}" for row in results) or "Brak wyników."
+    return (
+        "\n\n---\n\n".join(f"Źródło: {row['path']}\n{row['text']}" for row in results)
+        or "Brak wyników."
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Lokalny RAG dla dokumentów Markdown")
     parser.add_argument("command", choices=("index", "serve"))
-    parser.add_argument("--directory", type=Path, default=Path.cwd(), help="katalog projektu zawierający knowlage")
+    parser.add_argument(
+        "--directory",
+        type=Path,
+        default=Path.cwd(),
+        help="katalog projektu zawierający knowlage",
+    )
     args = parser.parse_args()
     root = args.directory.expanduser().resolve()
     if args.command == "index":

@@ -18,7 +18,12 @@ class FakeModel:
     def encode(self, texts, normalize_embeddings=True):
         def vector(text):
             return FakeVector([1.0, 0.0] if "kot" in text.lower() else [0.0, 1.0])
-        return vector(texts) if isinstance(texts, str) else [vector(text) for text in texts]
+
+        return (
+            vector(texts)
+            if isinstance(texts, str)
+            else [vector(text) for text in texts]
+        )
 
 
 class RagTest(unittest.TestCase):
@@ -76,7 +81,10 @@ class RagTest(unittest.TestCase):
             with patch("rag.model", return_value=fake):
                 count = index(root)
                 import lancedb
-                table = lancedb.connect(str(root / ".rag" / "lancedb")).open_table("knowledge")
+
+                table = lancedb.connect(str(root / ".rag" / "lancedb")).open_table(
+                    "knowledge"
+                )
                 self.assertEqual(table.count_rows(), count)
                 self.assertGreater(count, 64)
 
