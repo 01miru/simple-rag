@@ -4,7 +4,7 @@ Wyszukiwanie semantyczne po polskich i wielojęzycznych plikach Markdown. Embedd
 
 ## Instalacja i indeksowanie
 
-Wymagane są [uv](https://docs.astral.sh/uv/) i Python 3.12. W katalogu projektu uruchom:
+Projekt korzysta z Python 3.13. Wymagane są [uv](https://docs.astral.sh/uv/) oraz Python 3.13. W katalogu projektu uruchom:
 
 ```sh
 uv sync
