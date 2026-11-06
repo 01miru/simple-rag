@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import types
@@ -91,6 +92,44 @@ class RagTest(unittest.TestCase):
             (source / "pies.md").unlink()
             self.assertEqual(index(root), 0)
             self.assertIn("Brak dokumentów", search(root, "kot"))
+
+    @patch("rag.model", return_value=FakeModel())
+    def test_empty_markdown_file_can_be_indexed_and_updated(self, _model):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "knowledge"
+            source.mkdir()
+            document = source / "empty.md"
+            document.write_text("", encoding="utf-8")
+
+            self.assertEqual(index(root), 0)
+
+            document.write_text("Kot lubi mleko.", encoding="utf-8")
+            self.assertEqual(index(root), 1)
+            self.assertIn("Kot lubi mleko.", search(root, "kot"))
+
+    def test_index_rejects_invalid_utf8(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "knowledge"
+            source.mkdir()
+            (source / "invalid.md").write_bytes(b"\xff")
+
+            with self.assertRaises(UnicodeDecodeError):
+                index(root)
+
+    def test_index_reports_corrupted_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "knowledge"
+            source.mkdir()
+            (source / "note.md").write_text("Treść.", encoding="utf-8")
+            manifest = root / ".rag" / "manifest.json"
+            manifest.parent.mkdir()
+            manifest.write_text("{niepoprawny json", encoding="utf-8")
+
+            with self.assertRaises(json.JSONDecodeError):
+                index(root)
 
     def test_batching_and_recovery_after_failure(self):
         with tempfile.TemporaryDirectory() as directory:
