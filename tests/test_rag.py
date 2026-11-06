@@ -2,6 +2,7 @@ import sys
 import tempfile
 import types
 import unittest
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -33,13 +34,25 @@ class RagTest(unittest.TestCase):
         for available, device in ((True, "cuda"), (False, "cpu")):
             with self.subTest(device=device):
                 torch = types.ModuleType("torch")
+                torch.__spec__ = ModuleSpec("torch", loader=None)
                 torch.cuda = types.SimpleNamespace(is_available=lambda: available)
+                transformers = types.ModuleType("transformers")
+                transformers.__path__ = []
+                transformers_utils = types.ModuleType("transformers.utils")
+                transformers_utils.logging = types.SimpleNamespace(
+                    disable_progress_bar=Mock()
+                )
                 sentence_transformers = types.ModuleType("sentence_transformers")
                 sentence_transformers.SentenceTransformer = Mock()
                 model.cache_clear()
                 with patch.dict(
                     sys.modules,
-                    {"torch": torch, "sentence_transformers": sentence_transformers},
+                    {
+                        "torch": torch,
+                        "transformers": transformers,
+                        "transformers.utils": transformers_utils,
+                        "sentence_transformers": sentence_transformers,
+                    },
                 ):
                     model()
                 sentence_transformers.SentenceTransformer.assert_called_once_with(
