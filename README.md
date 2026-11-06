@@ -2,9 +2,9 @@
 
 [![Testy](https://github.com/01miru/simple-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/01miru/simple-rag/actions/workflows/tests.yml)
 
-Semantyczne wyszukiwanie w polskich i wielojęzycznych plikach Markdown. Embeddingi i indeks są tworzone lokalnie. Serwer MCP pozwala podłączyć wyszukiwanie do Codexa oraz innych aplikacji i agentów obsługujących MCP.
+Projekt wyszukuje semantycznie informacje w polskich i wielojęzycznych plikach Markdown. Tworzy embeddingi i indeks lokalnie. Przez serwer MCP można korzystać z wyszukiwania w Codexie oraz innych aplikacjach i agentach obsługujących MCP.
 
-Polecenia `rag index` i `rag serve` działają z wiersza poleceń. Do indeksowania potrzebny jest katalog `knowledge/`. Serwer MCP udostępnia narzędzie `search_knowledge`, które zwraca fragmenty dokumentów i ich ścieżki. Konfigurację klienta MCP znajdziesz w dokumentacji używanej aplikacji.
+Polecenia `rag index` i `rag serve` uruchamia się w terminalu. Do indeksowania potrzebny jest katalog `knowledge/`. Serwer MCP udostępnia narzędzie `search_knowledge`, które zwraca fragmenty dokumentów wraz ze ścieżkami. Sposób konfiguracji klienta MCP opisuje dokumentacja używanej aplikacji.
 
 ## Jak to działa
 
@@ -22,14 +22,12 @@ flowchart LR
 
 ## Pakiety i baza wektorowa
 
-- LanceDB przechowuje wektory i fragmenty dokumentów w `.rag/lancedb/`. Stan indeksowania plików jest zapisany w `.rag/manifest.json`.
+- LanceDB przechowuje wektory i fragmenty dokumentów w `.rag/lancedb/`, a stan indeksowania plików w `.rag/manifest.json`.
 - sentence-transformers tworzy embeddingi za pomocą modelu `paraphrase-multilingual-MiniLM-L12-v2` z Hugging Face.
 - PyTorch uruchamia model na CPU albo na karcie NVIDIA obsługującej CUDA.
 - FastMCP udostępnia wyszukiwanie przez MCP, korzystając z transportu `stdio`.
 
-Wymienione pakiety instalują się przez `uv sync`. Przy pierwszym użyciu model jest pobierany z Hugging Face, więc potrzebny jest dostęp do internetu i wolne miejsce na dysku.
-
-PyTorch automatycznie wybiera kartę NVIDIA z CUDA, jeśli jest dostępna. W pozostałych przypadkach model działa na CPU.
+Pakiety zainstalujesz poleceniem `uv sync`. Przy pierwszym użyciu model zostanie pobrany z Hugging Face, co wymaga dostępu do internetu i wolnego miejsca na dysku. PyTorch wybiera kartę NVIDIA z CUDA, jeśli jest dostępna; w przeciwnym razie model działa na CPU.
 
 ## Instalacja i indeksowanie
 
@@ -41,16 +39,26 @@ uv sync
 uv run rag index
 ```
 
-Po dodaniu, zmianie lub usunięciu dokumentów uruchom ponownie `uv run rag index`. Polecenie aktualizuje w indeksie `.rag/` tylko zmienione pliki i usuwa dokumenty, których już nie ma. Przetwarza treść partiami. Dokumenty muszą być zapisane w UTF-8. Po aktualizacji ze starszej wersji pierwsze uruchomienie przebuduje indeks.
+Po dodaniu, zmianie lub usunięciu dokumentów uruchom ponownie `uv run rag index`. Polecenie przetwarza treść partiami, aktualizuje w indeksie `.rag/` zmienione pliki i usuwa z niego te, których już nie ma. Dokumenty muszą być zapisane w UTF-8. Po aktualizacji ze starszej wersji pierwsze uruchomienie przebuduje indeks.
+
+## Testy jakości wyszukiwania
+
+Szybkie testy uruchom przez `uv run pytest`. Test jakości korzysta z rzeczywistego modelu: indeksuje sześć przykładowych dokumentów i sprawdza zapytania po polsku i angielsku. Uruchomisz go poleceniem:
+
+```sh
+RAG_QUALITY_TEST=1 uv run pytest -q tests/test_retrieval_quality.py
+```
+
+Test wymaga co najmniej 5 trafień na 6 zapytań w pierwszych trzech wynikach (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynosić co najmniej 0,65. Przy pierwszym uruchomieniu model może zostać pobrany. Zestaw jest niewielki i służy do wykrywania regresji; nie mierzy jakości wyszukiwania we własnych dokumentach.
 
 ## Podłączenie do Codexa
 
-Codex może połączyć się z serwerem MCP za pomocą poniższego polecenia. Zastąp przykładowe ścieżki bezwzględną ścieżką do projektu:
+Podłącz Codexa do serwera MCP poniższym poleceniem. Zastąp przykładowe ścieżki bezwzględną ścieżką do projektu:
 
 ```sh
 codex mcp add lokalna-wiedza -- /ABSOLUTNA/SCIEZKA/DO/rag/.venv/bin/rag serve --directory /ABSOLUTNA/SCIEZKA/DO/rag
 ```
 
-Sprawdź konfigurację poleceniem `codex mcp list`, a potem uruchom ponownie sesję Codexa. Możesz poprosić na przykład: „Wyszukaj w lokalnej wiedzy informacje o … i podaj źródła”. Narzędzie `search_knowledge` zwraca fragmenty dokumentów i ich ścieżki, z których Codex korzysta przy tworzeniu odpowiedzi. Więcej informacji o konfiguracji MCP znajdziesz w [dokumentacji OpenAI](https://developers.openai.com/codex/mcp/).
+Sprawdź konfigurację poleceniem `codex mcp list`, a potem uruchom ponownie sesję Codexa. Możesz poprosić na przykład: „Wyszukaj w lokalnej wiedzy informacje o … i podaj źródła”. Codex korzysta wtedy z fragmentów dokumentów i ścieżek zwróconych przez `search_knowledge`. Więcej informacji o konfiguracji MCP znajdziesz w [dokumentacji OpenAI](https://developers.openai.com/codex/mcp/).
 
 Do indeksu i modelu nie potrzebujesz klucza API. Korzystanie z Codexa podlega ustawieniom wybranej usługi Codex.
