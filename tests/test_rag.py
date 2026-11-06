@@ -1,9 +1,11 @@
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from rag import chunks, index, search
+from rag import chunks, index, model, search
 
 
 class FakeVector:
@@ -27,6 +29,25 @@ class FakeModel:
 
 
 class RagTest(unittest.TestCase):
+    def test_model_uses_cuda_when_available_and_cpu_otherwise(self):
+        for available, device in ((True, "cuda"), (False, "cpu")):
+            with self.subTest(device=device):
+                torch = types.ModuleType("torch")
+                torch.cuda = types.SimpleNamespace(is_available=lambda: available)
+                sentence_transformers = types.ModuleType("sentence_transformers")
+                sentence_transformers.SentenceTransformer = Mock()
+                model.cache_clear()
+                with patch.dict(
+                    sys.modules,
+                    {"torch": torch, "sentence_transformers": sentence_transformers},
+                ):
+                    model()
+                sentence_transformers.SentenceTransformer.assert_called_once_with(
+                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                    device=device,
+                )
+        model.cache_clear()
+
     def test_chunks_are_bounded_and_preserve_text(self):
         text = "a" * 2500
         parts = list(chunks(text))

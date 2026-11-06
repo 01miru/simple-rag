@@ -15,9 +15,11 @@ INDEX_VERSION = f"{MODEL}:chunks-1000-150-v1"
 
 @lru_cache(maxsize=1)
 def model():
+    import torch
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(MODEL, device="cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    return SentenceTransformer(MODEL, device=device)
 
 
 def chunks(text: str, size: int = 1000, overlap: int = 150):
@@ -46,7 +48,7 @@ def index(root: Path) -> int:
         raise ValueError(f"Brak katalogu {source}")
     db = lancedb.connect(str(root / ".rag" / "lancedb"))
     manifest_path = root / ".rag" / "manifest.json"
-    exists = TABLE in db.table_names()
+    exists = TABLE in db.list_tables()
     manifest = (
         json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest_path.exists()
@@ -116,7 +118,7 @@ def search(root: Path, query: str, limit: int = 5) -> str:
     if not db_path.exists():
         return "Brak indeksu. Uruchom `rag index`."
     db = lancedb.connect(str(db_path))
-    if TABLE not in db.table_names():
+    if TABLE not in db.list_tables():
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
     table = db.open_table(TABLE)
     if table.count_rows() == 0:

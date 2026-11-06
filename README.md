@@ -2,6 +2,8 @@
 
 Wyszukiwanie semantyczne po polskich i wielojęzycznych plikach Markdown. Embeddingi i indeks są tworzone lokalnie. Przy pierwszym użyciu model jest pobierany z Hugging Face; wymaga to dostępu do internetu i miejsca na dysku.
 
+Model automatycznie korzysta z CUDA, jeśli PyTorch wykryje dostępną kartę; w przeciwnym razie działa na CPU.
+
 ## Instalacja i indeksowanie
 
 Projekt korzysta z Python 3.13. Wymagane są [uv](https://docs.astral.sh/uv/) oraz Python 3.13. W katalogu projektu uruchom:
