@@ -36,7 +36,9 @@ class RagTest(unittest.TestCase):
             with self.subTest(device=device):
                 torch = types.ModuleType("torch")
                 torch.__spec__ = ModuleSpec("torch", loader=None)
-                torch.cuda = types.SimpleNamespace(is_available=lambda: available)
+                torch.cuda = types.SimpleNamespace(
+                    is_available=Mock(return_value=available)
+                )
                 transformers = types.ModuleType("transformers")
                 transformers.__path__ = []
                 transformers_utils = types.ModuleType("transformers.utils")
@@ -81,7 +83,15 @@ class RagTest(unittest.TestCase):
             _model.reset_mock()
             self.assertEqual(index(root), 0)
             _model.assert_not_called()
-            self.assertTrue(search(root, "kot").startswith("Źródło: knowledge/kot.md"))
+            results = search(root, "kot").split("\n\n---\n\n")
+            self.assertTrue(
+                results[0].startswith(
+                    "Źródło: knowledge/kot.md\nPodobieństwo: 1.0000\n"
+                )
+            )
+            self.assertIn(
+                "Źródło: knowledge/pies.md\nPodobieństwo: 0.0000\n", results[1]
+            )
             (source / "pies.md").write_text("Pies śpi w domu.", encoding="utf-8")
             self.assertEqual(index(root), 1)
             self.assertIn("Pies śpi w domu.", search(root, "pies"))

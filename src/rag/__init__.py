@@ -16,8 +16,8 @@ INDEX_VERSION = f"{MODEL}:chunks-1000-150-v1"
 @lru_cache(maxsize=1)
 def model():
     import torch
-    from transformers.utils import logging
     from sentence_transformers import SentenceTransformer
+    from transformers.utils import logging
 
     logging.disable_progress_bar()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -144,10 +144,13 @@ def search(root: Path, query: str, limit: int = 5) -> str:
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
 
     vector = model().encode(query, normalize_embeddings=True).tolist()
-    results = table.search(vector).limit(limit).to_list()
+    results = table.search(vector).distance_type("cosine").limit(limit).to_list()
 
     return (
-        "\n\n---\n\n".join(f"Źródło: {row['path']}\n{row['text']}" for row in results)
+        "\n\n---\n\n".join(
+            f"Źródło: {row['path']}\nPodobieństwo: {1 - row['_distance']:.4f}\n{row['text']}"
+            for row in results
+        )
         or "Brak wyników."
     )
 
@@ -177,7 +180,7 @@ def main() -> None:
 
         @server.tool()
         def search_knowledge(query: str) -> str:
-            """Wyszukaj informacje w lokalnych dokumentach Markdown i zwróć źródła."""
+            """Zwróć fragmenty dokumentów, identyfikatory źródeł i podobieństwo."""
             return search(root, query)
 
         server.run(transport="stdio")

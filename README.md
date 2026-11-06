@@ -2,9 +2,9 @@
 
 [![Testy](https://github.com/01miru/simple-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/01miru/simple-rag/actions/workflows/tests.yml)
 
-Projekt wyszukuje semantycznie informacje w polskich i wielojęzycznych plikach Markdown. Tworzy embeddingi i indeks lokalnie. Przez serwer MCP można korzystać z wyszukiwania w Codexie oraz innych aplikacjach i agentach obsługujących MCP.
+Projekt wyszukuje informacje w polskich i wielojęzycznych plikach Markdown za pomocą wyszukiwania semantycznego. Embeddingi i indeks tworzy lokalnie. Serwer MCP udostępnia wyszukiwanie Codexowi oraz innym aplikacjom i agentom obsługującym MCP.
 
-Polecenia `rag index` i `rag serve` uruchamia się w terminalu. Do indeksowania potrzebny jest katalog `knowledge/`. Serwer MCP udostępnia narzędzie `search_knowledge`, które zwraca fragmenty dokumentów wraz ze ścieżkami. Sposób konfiguracji klienta MCP opisuje dokumentacja używanej aplikacji.
+Polecenia `rag index` i `rag serve` uruchamia się w terminalu. Do indeksowania potrzebny jest katalog `knowledge/`. Narzędzie MCP `search_knowledge` zwraca fragmenty dokumentów wraz ze źródłem i oceną podobieństwa. Źródłem jest ścieżka pliku względem katalogu projektu, więc fragmenty tego samego pliku mają ten sam identyfikator. Podobieństwo cosinusowe ma wartość od -1 do 1; im jest większe, tym wynik jest bardziej podobny do zapytania. Sposób konfiguracji klienta MCP znajdziesz w dokumentacji używanej aplikacji.
 
 ## Jak to działa
 
@@ -27,7 +27,7 @@ flowchart LR
 - PyTorch uruchamia model na CPU albo na karcie NVIDIA obsługującej CUDA.
 - FastMCP udostępnia wyszukiwanie przez MCP, korzystając z transportu `stdio`.
 
-Pakiety zainstalujesz poleceniem `uv sync`. Przy pierwszym użyciu model zostanie pobrany z Hugging Face, co wymaga dostępu do internetu i wolnego miejsca na dysku. PyTorch wybiera kartę NVIDIA z CUDA, jeśli jest dostępna; w przeciwnym razie model działa na CPU.
+Pakiety zainstalujesz poleceniem `uv sync`. Przy pierwszym użyciu model zostanie pobrany z Hugging Face. Potrzebujesz do tego dostępu do internetu i wolnego miejsca na dysku. Jeśli masz kartę NVIDIA z CUDA, PyTorch jej użyje. W przeciwnym razie model działa na CPU.
 
 ## Instalacja i indeksowanie
 
@@ -39,17 +39,17 @@ uv sync
 uv run rag index
 ```
 
-Po dodaniu, zmianie lub usunięciu dokumentów uruchom ponownie `uv run rag index`. Polecenie przetwarza treść partiami, aktualizuje w indeksie `.rag/` zmienione pliki i usuwa z niego te, których już nie ma. Dokumenty muszą być zapisane w UTF-8. Po aktualizacji ze starszej wersji pierwsze uruchomienie przebuduje indeks.
+Po dodaniu, zmianie lub usunięciu dokumentów uruchom ponownie `uv run rag index`. Polecenie przetwarza treść partiami: aktualizuje zmienione pliki w indeksie `.rag/` i usuwa z niego brakujące dokumenty. Pliki muszą być zapisane w UTF-8. Po aktualizacji ze starszej wersji pierwsze uruchomienie przebuduje indeks.
 
 ## Testy jakości wyszukiwania
 
-Szybkie testy uruchom przez `uv run pytest`. Test jakości korzysta z rzeczywistego modelu: indeksuje sześć przykładowych dokumentów i sprawdza zapytania po polsku i angielsku. Uruchomisz go poleceniem:
+Szybkie testy uruchom poleceniem `uv run pytest`. Osobny test jakości korzysta z rzeczywistego modelu: indeksuje sześć przykładowych dokumentów i sprawdza zapytania po polsku i angielsku. Uruchomisz go tak:
 
 ```sh
 RAG_QUALITY_TEST=1 uv run pytest -q tests/test_retrieval_quality.py
 ```
 
-Test wymaga co najmniej 5 trafień na 6 zapytań w pierwszych trzech wynikach (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynosić co najmniej 0,65. Przy pierwszym uruchomieniu model może zostać pobrany. Zestaw jest niewielki i służy do wykrywania regresji; nie mierzy jakości wyszukiwania we własnych dokumentach.
+Test wymaga co najmniej 5 trafień na 6 zapytań w pierwszych trzech wynikach (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynosić co najmniej 0,65. Przy pierwszym uruchomieniu model może zostać pobrany. Ten niewielki zestaw pomaga wykryć regresje, ale nie mierzy jakości wyszukiwania we własnych dokumentach.
 
 ## Podłączenie do Codexa
 
