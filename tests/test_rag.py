@@ -58,7 +58,7 @@ class RagTest(unittest.TestCase):
     def test_index_search_rebuild_and_empty(self, _model):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = root / "knowlage"
+            source = root / "knowledge"
             source.mkdir()
             self.assertIn("Brak indeksu", search(root, "kot"))
             (source / "kot.md").write_text("Kot lubi mleko.", encoding="utf-8")
@@ -67,7 +67,7 @@ class RagTest(unittest.TestCase):
             _model.reset_mock()
             self.assertEqual(index(root), 0)
             _model.assert_not_called()
-            self.assertTrue(search(root, "kot").startswith("Źródło: knowlage/kot.md"))
+            self.assertTrue(search(root, "kot").startswith("Źródło: knowledge/kot.md"))
             (source / "pies.md").write_text("Pies śpi w domu.", encoding="utf-8")
             self.assertEqual(index(root), 1)
             self.assertIn("Pies śpi w domu.", search(root, "pies"))
@@ -82,7 +82,7 @@ class RagTest(unittest.TestCase):
     def test_batching_and_recovery_after_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = root / "knowlage"
+            source = root / "knowledge"
             source.mkdir()
             (source / "large.md").write_text("kot " * 20000, encoding="utf-8")
             fake = FakeModel()

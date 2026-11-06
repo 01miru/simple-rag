@@ -5,7 +5,7 @@
 - `src/rag/__init__.py` contains the package, CLI, indexing logic, and MCP server.
 - `tests/test_rag.py` covers chunking, model selection, indexing, recovery, and search.
 - `README.md` documents installation and use. `.github/workflows/tests.yml` defines CI.
-- Put Markdown knowledge files under `knowlage/` (including subdirectories); `.rag/` holds the generated local index. Both are ignored by Git.
+- Put Markdown knowledge files under `knowledge/` (including subdirectories); `.rag/` holds the generated local index. Both are ignored by Git.
 
 ## Build, Test, and Development
 
@@ -31,4 +31,4 @@ Recent commits use short, lowercase summaries (for example, `reformat` and `adde
 
 ## Configuration and Data
 
-Do not commit `.rag/`, `knowlage/`, credentials, or downloaded model files. Use UTF-8 for Markdown input. The index is local and can be regenerated with `uv run rag index`.
+Do not commit `.rag/`, `knowledge/`, credentials, or downloaded model files. Use UTF-8 for Markdown input. The index is local and can be regenerated with `uv run rag index`.

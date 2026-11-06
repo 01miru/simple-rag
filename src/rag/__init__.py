@@ -43,7 +43,7 @@ def chunks(text: str, size: int = 1000, overlap: int = 150):
 def index(root: Path) -> int:
     import lancedb
 
-    source = root / "knowlage"
+    source = root / "knowledge"
     if not source.is_dir():
         raise ValueError(f"Brak katalogu {source}")
 
@@ -157,7 +157,7 @@ def main() -> None:
         "--directory",
         type=Path,
         default=Path.cwd(),
-        help="katalog projektu zawierający knowlage",
+        help="katalog projektu zawierający knowledge",
     )
     args = parser.parse_args()
     root = args.directory.expanduser().resolve()
