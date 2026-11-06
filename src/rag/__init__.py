@@ -46,9 +46,11 @@ def index(root: Path) -> int:
     source = root / "knowlage"
     if not source.is_dir():
         raise ValueError(f"Brak katalogu {source}")
+
     db = lancedb.connect(str(root / ".rag" / "lancedb"))
     manifest_path = root / ".rag" / "manifest.json"
     exists = TABLE in db.list_tables()
+
     manifest = (
         json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest_path.exists()
@@ -61,41 +63,52 @@ def index(root: Path) -> int:
             db.drop_table(TABLE)
             exists = False
         manifest = {"version": INDEX_VERSION, "files": {}}
+
     files = manifest["files"]
 
-    def save():
+    def save_manifest() -> None:
         temporary = manifest_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
         temporary.replace(manifest_path)
 
-    def delete(path):
+    def delete_chunks(path: str) -> None:
         if exists:
             escaped = path.replace("'", "''")
             db.open_table(TABLE).delete(f"path = '{escaped}'")
 
-    paths = {path.relative_to(root).as_posix(): path for path in source.rglob("*.md")}
-    for name in files.keys() - paths.keys():
-        files[name] = None
-        save()
-        delete(name)
-        del files[name]
-        save()
+    markdown_files = {
+        path.relative_to(root).as_posix(): path for path in source.rglob("*.md")
+    }
 
-    count = 0
-    for name, path in sorted(paths.items()):
-        data = path.read_bytes()
+    for relative_path in files.keys() - markdown_files.keys():
+        files[relative_path] = None
+        save_manifest()
+        delete_chunks(relative_path)
+        del files[relative_path]
+        save_manifest()
+
+    indexed_chunks = 0
+
+    for relative_path, file_path in sorted(markdown_files.items()):
+        data = file_path.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
-        if files.get(name) == digest:
+        if files.get(relative_path) == digest:
             continue
+
         text = data.decode("utf-8")
-        files[name] = None
-        save()
-        delete(name)
+        files[relative_path] = None
+        save_manifest()
+        delete_chunks(relative_path)
+
         fragments = iter(chunks(text))
         while batch := list(islice(fragments, BATCH_SIZE)):
             vectors = model().encode(batch, normalize_embeddings=True)
             records = [
-                {"path": name, "text": fragment, "vector": vector.tolist()}
+                {
+                    "path": relative_path,
+                    "text": fragment,
+                    "vector": vector.tolist(),
+                }
                 for fragment, vector in zip(batch, vectors, strict=True)
             ]
             if exists:
@@ -103,10 +116,12 @@ def index(root: Path) -> int:
             else:
                 db.create_table(TABLE, data=records)
                 exists = True
-            count += len(records)
-        files[name] = digest
-        save()
-    return count
+            indexed_chunks += len(records)
+
+        files[relative_path] = digest
+        save_manifest()
+
+    return indexed_chunks
 
 
 def search(root: Path, query: str, limit: int = 5) -> str:
@@ -114,17 +129,21 @@ def search(root: Path, query: str, limit: int = 5) -> str:
 
     if not query.strip():
         return "Podaj niepuste zapytanie."
+
     db_path = root / ".rag" / "lancedb"
     if not db_path.exists():
         return "Brak indeksu. Uruchom `rag index`."
+
     db = lancedb.connect(str(db_path))
     if TABLE not in db.list_tables():
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
     table = db.open_table(TABLE)
     if table.count_rows() == 0:
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
+
     vector = model().encode(query, normalize_embeddings=True).tolist()
     results = table.search(vector).limit(limit).to_list()
+
     return (
         "\n\n---\n\n".join(f"Źródło: {row['path']}\n{row['text']}" for row in results)
         or "Brak wyników."
@@ -142,6 +161,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     root = args.directory.expanduser().resolve()
+
     if args.command == "index":
         try:
             count = index(root)
