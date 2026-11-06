@@ -1,10 +1,21 @@
-# Lokalny RAG dla Codexa
+# Lokalny RAG dla aplikacji obsługujących MCP
 
 [![Testy](https://github.com/01miru/simple-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/01miru/simple-rag/actions/workflows/tests.yml)
 
-Semantyczne wyszukiwanie w polskich i wielojęzycznych plikach Markdown. Embeddingi i indeks powstają lokalnie. Przy pierwszym użyciu program pobiera model z Hugging Face, więc potrzebny jest dostęp do internetu i wolne miejsce na dysku.
+Semantyczne wyszukiwanie w polskich i wielojęzycznych plikach Markdown. Embeddingi i indeks są tworzone lokalnie. Serwer MCP pozwala podłączyć wyszukiwanie do Codexa oraz innych aplikacji i agentów obsługujących MCP.
 
-Jeśli PyTorch wykryje kartę obsługującą CUDA, model użyje jej automatycznie. W przeciwnym razie obliczenia będą wykonywane na CPU.
+Polecenia `rag index` i `rag serve` działają z wiersza poleceń. Do indeksowania potrzebny jest katalog `knowledge/`. Serwer MCP udostępnia narzędzie `search_knowledge`, które zwraca fragmenty dokumentów i ich ścieżki. Konfigurację klienta MCP znajdziesz w dokumentacji używanej aplikacji.
+
+## Pakiety i baza wektorowa
+
+- LanceDB przechowuje wektory i fragmenty dokumentów w `.rag/lancedb/`. Stan indeksowania plików jest zapisany w `.rag/manifest.json`.
+- sentence-transformers tworzy embeddingi za pomocą modelu `paraphrase-multilingual-MiniLM-L12-v2` z Hugging Face.
+- PyTorch uruchamia model na CPU albo na karcie NVIDIA obsługującej CUDA.
+- FastMCP udostępnia wyszukiwanie przez MCP, korzystając z transportu `stdio`.
+
+Wymienione pakiety instalują się przez `uv sync`. Przy pierwszym użyciu model jest pobierany z Hugging Face, więc potrzebny jest dostęp do internetu i wolne miejsce na dysku.
+
+PyTorch automatycznie wybiera kartę NVIDIA z CUDA, jeśli jest dostępna. W pozostałych przypadkach model działa na CPU.
 
 ## Instalacja i indeksowanie
 
@@ -20,7 +31,7 @@ Po dodaniu, zmianie lub usunięciu dokumentów uruchom ponownie `uv run rag inde
 
 ## Podłączenie do Codexa
 
-Dodaj serwer. W poleceniu zastąp przykładowe ścieżki bezwzględną ścieżką do projektu:
+Codex może połączyć się z serwerem MCP za pomocą poniższego polecenia. Zastąp przykładowe ścieżki bezwzględną ścieżką do projektu:
 
 ```sh
 codex mcp add lokalna-wiedza -- /ABSOLUTNA/SCIEZKA/DO/rag/.venv/bin/rag serve --directory /ABSOLUTNA/SCIEZKA/DO/rag
