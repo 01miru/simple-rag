@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 import tempfile
 import types
@@ -19,6 +20,11 @@ class FakeVector:
 
 
 class FakeModel:
+    max_seq_length = 128
+    tokenizer = types.SimpleNamespace(
+        encode=lambda text, **kwargs: [0, *re.findall(r"\w+|[^\w\s]", text), 1]
+    )
+
     def encode(self, texts, normalize_embeddings=True):
         def vector(text):
             return FakeVector([1.0, 0.0] if "kot" in text.lower() else [0.0, 1.0])
@@ -64,11 +70,48 @@ class RagTest(unittest.TestCase):
                 )
         model.cache_clear()
 
-    def test_chunks_are_bounded_and_preserve_text(self):
-        text = "a" * 2500
-        parts = list(chunks(text))
-        self.assertTrue(all(len(part) <= 1000 for part in parts))
-        self.assertEqual(parts[0] + "".join(part[150:] for part in parts[1:]), text)
+    def test_chunks_preserve_sections_blocks_and_token_limit(self):
+        text = (
+            "# Główny\nWstęp.\n\n## Kod\n```python\n# nie nagłówek\nprint('kot')\n```\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n"
+            + "kot " * 80
+        )
+        parts = list(chunks(text, FakeModel.tokenizer, 30))
+        self.assertTrue(
+            all(len(FakeModel.tokenizer.encode(p["text"])) <= 30 for p in parts)
+        )
+        self.assertEqual(parts[0]["section"], "Główny")
+        self.assertTrue(all(p["section"] == "Główny > Kod" for p in parts[1:]))
+        self.assertTrue(
+            any(
+                "```python\n# nie nagłówek\nprint('kot')\n```" in p["text"]
+                for p in parts
+            )
+        )
+        self.assertTrue(
+            any("| A | B |\n|---|---|\n| 1 | 2 |" in p["text"] for p in parts)
+        )
+        self.assertEqual("".join(p["text"] for p in parts).count("kot"), 81)
+
+    @patch("rag.model", return_value=FakeModel())
+    def test_search_returns_section_metadata(self, _model):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "knowledge").mkdir()
+            (root / "knowledge" / "note.md").write_text(
+                "# Zwierzęta\n## Kot\nKot śpi.", encoding="utf-8"
+            )
+            index(root)
+            self.assertIn("Sekcja: Zwierzęta > Kot", search(root, "kot"))
+
+    def test_setext_headings(self):
+        parts = list(
+            chunks(
+                "Tytuł\n======\nWstęp\n\nSekcja\n------\nTreść", FakeModel.tokenizer, 30
+            )
+        )
+        self.assertEqual(
+            [part["section"] for part in parts], ["Tytuł", "Tytuł > Sekcja"]
+        )
 
     @patch("rag.model", return_value=FakeModel())
     def test_index_search_rebuild_and_empty(self, _model):
@@ -157,6 +200,8 @@ class RagTest(unittest.TestCase):
                 return fake.encode(texts, normalize_embeddings)
 
             with patch("rag.model") as mocked:
+                mocked.return_value.tokenizer = fake.tokenizer
+                mocked.return_value.max_seq_length = fake.max_seq_length
                 mocked.return_value.encode.side_effect = encode
                 with self.assertRaises(RuntimeError):
                     index(root)

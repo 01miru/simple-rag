@@ -41,6 +41,8 @@ uv run rag index
 
 Po dodaniu, zmianie lub usunięciu dokumentów uruchom ponownie `uv run rag index`. Polecenie przetwarza treść partiami: aktualizuje zmienione pliki w indeksie `.rag/` i usuwa z niego brakujące dokumenty. Pliki muszą być zapisane w UTF-8. Po aktualizacji ze starszej wersji pierwsze uruchomienie przebuduje indeks.
 
+Dokumenty są dzielone według nagłówków i bloków Markdown, z limitem tokenów modelu embeddingowego. Wyniki zawierają ścieżkę nagłówków sekcji. Bloki kodu i tabele, które mieszczą się w limicie, pozostają w całości; większe bloki są dzielone, aby model nie pomijał ich końcowej treści.
+
 ## Testy jakości wyszukiwania
 
 Szybkie testy uruchom poleceniem `uv run pytest`. Osobny test jakości korzysta z rzeczywistego modelu: indeksuje sześć przykładowych dokumentów i sprawdza zapytania po polsku i angielsku. Uruchomisz go tak:
