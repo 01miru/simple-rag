@@ -1,5 +1,7 @@
 # Lokalny RAG dla Codexa
 
+[![Testy](https://github.com/01miru/simple-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/01miru/simple-rag/actions/workflows/tests.yml)
+
 Semantyczne wyszukiwanie w polskich i wielojęzycznych plikach Markdown. Embeddingi i indeks powstają lokalnie. Przy pierwszym użyciu program pobiera model z Hugging Face, więc potrzebny jest dostęp do internetu i wolne miejsce na dysku.
 
 Jeśli PyTorch wykryje kartę obsługującą CUDA, model użyje jej automatycznie. W przeciwnym razie obliczenia będą wykonywane na CPU.

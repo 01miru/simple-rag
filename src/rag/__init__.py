@@ -16,8 +16,10 @@ INDEX_VERSION = f"{MODEL}:chunks-1000-150-v1"
 @lru_cache(maxsize=1)
 def model():
     import torch
+    from transformers.utils import logging
     from sentence_transformers import SentenceTransformer
 
+    logging.disable_progress_bar()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return SentenceTransformer(MODEL, device=device)
 
