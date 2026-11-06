@@ -6,6 +6,20 @@ Semantyczne wyszukiwanie w polskich i wielojęzycznych plikach Markdown. Embeddi
 
 Polecenia `rag index` i `rag serve` działają z wiersza poleceń. Do indeksowania potrzebny jest katalog `knowledge/`. Serwer MCP udostępnia narzędzie `search_knowledge`, które zwraca fragmenty dokumentów i ich ścieżki. Konfigurację klienta MCP znajdziesz w dokumentacji używanej aplikacji.
 
+## Jak to działa
+
+```mermaid
+flowchart LR
+    A[Pliki Markdown w knowledge/] -->|rag index| B[Podział na fragmenty]
+    B --> C[Embeddingi z sentence-transformers]
+    C --> D[(LanceDB w .rag/lancedb/)]
+    E[Aplikacja obsługująca MCP] -->|zapytanie przez search_knowledge| F[Serwer MCP]
+    F --> G[Embedding zapytania]
+    G --> D
+    D -->|najbardziej podobne fragmenty i ścieżki| F
+    F --> E
+```
+
 ## Pakiety i baza wektorowa
 
 - LanceDB przechowuje wektory i fragmenty dokumentów w `.rag/lancedb/`. Stan indeksowania plików jest zapisany w `.rag/manifest.json`.
