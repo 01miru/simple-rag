@@ -10,12 +10,35 @@ from . import _shared
 from ._shared import BATCH_SIZE, INDEX_VERSION, TABLE
 
 
+def embedding_text(text: str, section: str, tokenizer, limit: int) -> str:
+    """Prepend a bounded section path, leaving at least half the budget for text."""
+    low, high = 0, len(section)
+    while low < high:
+        mid = (low + high + 1) // 2
+        tokens = tokenizer.encode(
+            section[:mid], add_special_tokens=False, truncation=False, verbose=False
+        )
+        if len(tokens) <= limit // 2:
+            low = mid
+        else:
+            high = mid - 1
+    prefix = section[:low].strip()
+    return f"{prefix}\n\n{text}" if prefix else text
+
+
 def chunks(text: str, tokenizer, limit: int):
     """Split Markdown into sections and blocks within the model's token limit."""
 
     def fits(value: str) -> bool:
         return (
-            len(tokenizer.encode(value, add_special_tokens=True, truncation=False))
+            len(
+                tokenizer.encode(
+                    embedding_text(value, section, tokenizer, limit),
+                    add_special_tokens=True,
+                    truncation=False,
+                    verbose=False,
+                )
+            )
             <= limit
         )
 
@@ -178,7 +201,16 @@ def index(root: Path) -> int:
         fragments = iter(chunks(text, encoder.tokenizer, encoder.max_seq_length))
         while batch := list(islice(fragments, BATCH_SIZE)):
             vectors = encoder.encode(
-                [part["text"] for part in batch], normalize_embeddings=True
+                [
+                    embedding_text(
+                        part["text"],
+                        part["section"],
+                        encoder.tokenizer,
+                        encoder.max_seq_length,
+                    )
+                    for part in batch
+                ],
+                normalize_embeddings=True,
             )
             records = [
                 {

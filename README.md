@@ -41,7 +41,7 @@ uv run rag index
 
 Po dodaniu, zmianie lub usunięciu dokumentów ponownie uruchom `uv run rag index`. Polecenie aktualizuje zmienione pliki i usuwa z indeksu `.rag/` te, których już nie ma. Dokumenty zapisuj w UTF-8. Pierwsze indeksowanie po aktualizacji ze starszej wersji przebuduje indeks.
 
-Indeks dzieli dokumenty według nagłówków i bloków Markdown, pilnując limitu tokenów modelu embeddingowego. Wyniki zawierają ścieżkę nagłówków sekcji. Bloki kodu i tabele mieszczące się w limicie pozostają w całości. Dłuższe bloki są dzielone.
+Indeks dzieli dokumenty według nagłówków i bloków Markdown, pilnując limitu tokenów modelu embeddingowego. Model otrzymuje ścieżkę nagłówków razem z treścią fragmentu; długie ścieżki są skracane, aby zostawić miejsce na treść. Wyniki zawierają oryginalną treść i pełną ścieżkę nagłówków sekcji. Bloki kodu i tabele mieszczące się w limicie pozostają w całości. Dłuższe bloki są dzielone.
 
 ## Narzędzia MCP
 
@@ -85,7 +85,7 @@ Szybki zestaw testów jednostkowych i integracyjnych używa atrap modelu. Urucho
 RAG_QUALITY_TEST=1 uv run pytest -q tests/test_retrieval_quality.py
 ```
 
-Test wymaga, by właściwy dokument znalazł się w pierwszej trójce dla co najmniej pięciu z sześciu pytań (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynieść co najmniej 0,65. Pierwsze uruchomienie może pobrać model. Zestaw wykrywa regresje, ale nie ocenia jakości wyszukiwania w Twoich dokumentach.
+Test wymaga, by właściwy dokument znalazł się w pierwszej trójce dla co najmniej pięciu z sześciu pytań (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynieść co najmniej 0,65. Pierwsze uruchomienie może pobrać model. Dodatkowe 30 parafraz sprawdza Recall@5 co najmniej 0,8 i MRR@5 co najmniej 0,65. Zestaw wykrywa regresje, ale nie ocenia jakości wyszukiwania w Twoich dokumentach.
 
 ## Podłączenie do Codexa
 

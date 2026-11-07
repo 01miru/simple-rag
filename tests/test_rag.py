@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from rag import chunks, index, model, search
+from rag.indexing import embedding_text
 
 
 class FakeVector:
@@ -112,6 +113,75 @@ class RagTest(unittest.TestCase):
         self.assertEqual(
             [part["section"] for part in parts], ["Tytuł", "Tytuł > Sekcja"]
         )
+
+    def test_embedding_text_respects_section_and_limit(self):
+        tokenizer = FakeModel.tokenizer
+        text = "Bez nagłówka.\n\n# Zwierzęta\n## Kot\n" + "kot " * 80
+        parts = list(chunks(text, tokenizer, 24))
+        self.assertEqual(
+            embedding_text(parts[0]["text"], "", tokenizer, 24), parts[0]["text"]
+        )
+        self.assertGreater(len(parts), 3)
+        for part in parts[2:]:
+            encoded = embedding_text(part["text"], part["section"], tokenizer, 24)
+            self.assertTrue(encoded.startswith("Zwierzęta > Kot\n\n"))
+            self.assertTrue(encoded.endswith(part["text"]))
+            self.assertLessEqual(len(tokenizer.encode(encoded)), 24)
+
+    def test_long_candidates_are_measured_without_tokenizer_warnings(self):
+        calls = []
+
+        def encode(text, **kwargs):
+            calls.append((text, kwargs))
+            return [0, *re.findall(r"\w+|[^\w\s]", text), 1]
+
+        tokenizer = types.SimpleNamespace(encode=encode)
+        parts = list(
+            chunks("# " + "nagłówek " * 50 + "\n" + "tekst " * 100, tokenizer, 24)
+        )
+        self.assertTrue(any(len(encode(text)) > 24 for text, _ in list(calls)))
+        for _, options in calls:
+            if options:
+                self.assertFalse(options["verbose"])
+                self.assertFalse(options["truncation"])
+        for part in parts:
+            value = embedding_text(part["text"], part["section"], tokenizer, 24)
+            self.assertLessEqual(len(encode(value)), 24)
+
+        long_text = "# " + "nagłówek " * 100 + "\n" + "treść " * 50
+        parts = list(chunks(long_text, tokenizer, 24))
+        for part in parts:
+            encoded = embedding_text(part["text"], part["section"], tokenizer, 24)
+            self.assertTrue(encoded.endswith(part["text"]))
+            self.assertLess(len(encoded), len(part["section"]) + len(part["text"]))
+            self.assertLessEqual(len(tokenizer.encode(encoded)), 24)
+
+    def test_index_embeds_section_and_rebuilds_old_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "knowledge").mkdir()
+            (root / "knowledge" / "note.md").write_text(
+                "# Zwierzęta\n## Kot\nKot śpi.", encoding="utf-8"
+            )
+            fake = FakeModel()
+            fake.encode = Mock(wraps=fake.encode)
+            with patch("rag._shared.model", return_value=fake):
+                index(root)
+                encoded = fake.encode.call_args.args[0]
+                self.assertEqual(
+                    encoded,
+                    ["Zwierzęta\n\n# Zwierzęta", "Zwierzęta > Kot\n\n## Kot\nKot śpi."],
+                )
+                result = search(root, "kot")
+                self.assertIn("Sekcja: Zwierzęta > Kot", result)
+                self.assertIn("## Kot\nKot śpi.", result)
+                manifest_path = root / ".rag" / "manifest.json"
+                manifest = json.loads(manifest_path.read_text())
+                manifest["version"] = "old"
+                manifest_path.write_text(json.dumps(manifest))
+                fake.encode.reset_mock()
+                self.assertEqual(index(root), 2)
+                fake.encode.assert_called_once()
 
     @patch("rag._shared.model", return_value=FakeModel())
     def test_index_search_rebuild_and_empty(self, _model):
