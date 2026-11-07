@@ -239,6 +239,76 @@ def search(root: Path, query: str, limit: int = 5) -> str:
     )
 
 
+def _indexed(root: Path) -> list[str]:
+    manifest = root / ".rag" / "manifest.json"
+    if not manifest.is_file():
+        return []
+    try:
+        files = json.loads(manifest.read_text(encoding="utf-8")).get("files", {})
+        return sorted(path for path, digest in files.items() if digest is not None)
+    except (OSError, ValueError):
+        return []
+
+
+def _matches(path: str, prefix: str | None) -> bool:
+    if prefix is None:
+        return True
+    prefix = prefix.rstrip("/")
+    return path == prefix or path.startswith(prefix + "/")
+
+
+def list_documents(
+    root: Path, path_prefix: str | None = None, limit: int = 100, offset: int = 0
+) -> dict:
+    if not 1 <= limit <= 500 or offset < 0:
+        raise ValueError("limit musi być z zakresu 1..500, a offset nieujemny.")
+    paths = [p for p in _indexed(root) if _matches(p, path_prefix)]
+    page = paths[offset : offset + limit]
+    return {
+        "documents": [{"path": p} for p in page],
+        "total": len(paths),
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + len(page) < len(paths),
+    }
+
+
+def get_document(
+    root: Path, path: str, start_line: int = 1, max_lines: int = 200
+) -> dict:
+    if start_line < 1 or not 1 <= max_lines <= 500:
+        raise ValueError(
+            "start_line musi być >=1, max_lines musi być z zakresu 1..500."
+        )
+    source = (root / "knowledge").resolve()
+    target = (root / path).resolve()
+    if not target.is_relative_to(source) or target.suffix.lower() != ".md":
+        raise ValueError("Dozwolone są wyłącznie pliki .md wewnątrz knowledge/.")
+    relative = target.relative_to(root.resolve()).as_posix()
+    if relative not in _indexed(root):
+        raise ValueError("Dokument nie jest poprawnie zaindeksowany.")
+    data = target.read_bytes()
+    if (
+        hashlib.sha256(data).hexdigest()
+        != json.loads((root / ".rag/manifest.json").read_text(encoding="utf-8"))[
+            "files"
+        ][relative]
+    ):
+        raise ValueError(
+            "Dokument zmienił się od indeksowania; wymagane ponowne indeksowanie."
+        )
+    lines = data.decode("utf-8").splitlines()
+    selected = lines[start_line - 1 : start_line - 1 + max_lines]
+    return {
+        "path": relative,
+        "start_line": start_line,
+        "end_line": start_line + len(selected) - 1,
+        "total_lines": len(lines),
+        "content": "\n".join(selected),
+        "has_more": start_line - 1 + len(selected) < len(lines),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Lokalny RAG dla dokumentów Markdown")
     parser.add_argument("command", choices=("index", "serve"))
@@ -258,13 +328,69 @@ def main() -> None:
             parser.exit(1, f"Błąd indeksowania: {exc}\n")
         print(f"Przetworzono {count} nowych lub zmienionych fragmentów.")
     else:
-        from mcp.server.fastmcp import FastMCP
-
-        server = FastMCP("Lokalna wiedza")
-
-        @server.tool()
-        def search_knowledge(query: str) -> str:
-            """Zwróć fragmenty dokumentów, identyfikatory źródeł i podobieństwo."""
-            return search(root, query)
+        server = create_server(root)
 
         server.run(transport="stdio")
+
+
+def create_server(root: Path):
+    from mcp.server.fastmcp import FastMCP
+
+    server = FastMCP("Lokalna wiedza")
+
+    @server.tool()
+    def search_knowledge(
+        query: str, limit: int = 5, path_prefix: str | None = None
+    ) -> str:
+        """Wyszukaj semantycznie fragmenty; używaj do odnajdywania źródeł (limit 1..50)."""
+        if not 1 <= limit <= 50:
+            raise ValueError("limit musi być z zakresu 1..50.")
+        if not query.strip():
+            return "Podaj niepuste zapytanie."
+        import lancedb
+
+        db_path = root / ".rag" / "lancedb"
+        if (
+            not db_path.exists()
+            or TABLE not in lancedb.connect(str(db_path)).list_tables()
+        ):
+            return "Brak indeksu. Uruchom `rag index`."
+        table = lancedb.connect(str(db_path)).open_table(TABLE)
+        predicate = None
+        if path_prefix:
+            prefix = path_prefix.rstrip("/")
+            escaped = (
+                prefix.replace("'", "''")
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            predicate = f"path = '{escaped}' OR path LIKE '{escaped}/%' ESCAPE '\\'"
+        vector = model().encode(query, normalize_embeddings=True).tolist()
+        request = table.search(vector).distance_type("cosine")
+        if predicate:
+            request = request.where(predicate, prefilter=True)
+        rows = request.limit(limit).to_list()
+        if not rows and path_prefix:
+            return "Brak wyników dla podanej ścieżki."
+        return (
+            "\n\n---\n\n".join(
+                f"Źródło: {r['path']}\n{f'Sekcja: {r["section"]}\n' if r.get('section') else ''}Podobieństwo: {1 - r['_distance']:.4f}\n{r['text']}"
+                for r in rows
+            )
+            or "Brak wyników."
+        )
+
+    @server.tool()
+    def list_documents(
+        path_prefix: str | None = None, limit: int = 100, offset: int = 0
+    ) -> dict:
+        """Wylistuj zaindeksowane źródła; używaj do przeglądania i paginacji bazy."""
+        return list_documents(root, path_prefix, limit, offset)
+
+    @server.tool()
+    def get_document(path: str, start_line: int = 1, max_lines: int = 200) -> dict:
+        """Pobierz ograniczony zakres źródła; używaj do weryfikacji i porównania."""
+        return get_document(root, path, start_line, max_lines)
+
+    return server
