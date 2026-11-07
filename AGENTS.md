@@ -1,34 +1,31 @@
 # Repository Guidelines
 
-## Project Structure
+## Project Structure & Module Organization
 
-- `src/rag/__init__.py` contains the package, CLI, indexing logic, and MCP server.
-- `tests/test_rag.py` covers chunking, model selection, indexing, recovery, and search.
-- `README.md` documents installation and use. `.github/workflows/tests.yml` defines CI.
-- Put Markdown knowledge files under `knowledge/` (including subdirectories); `.rag/` holds the generated local index. Both are ignored by Git.
+`src/rag/` contains the Python package: `indexing.py` chunks and indexes Markdown, `search.py` handles retrieval, `server.py` provides the CLI and MCP server, and `_shared.py` holds shared resources. Tests live in `tests/test_*.py`. Put UTF-8 Markdown sources in `knowledge/`, including subdirectories. The generated LanceDB index and manifest live in `.rag/`; they are local runtime data.
 
-## Build, Test, and Development
+## Build, Test, and Development Commands
 
-- `uv sync` installs the project and development dependencies from `uv.lock`.
-- `uv run rag index` indexes or updates Markdown files in the current directory.
-- `uv run rag serve --directory /path/to/project` starts the MCP server for that project.
-- `uv run pytest` runs the test suite; CI uses `uv sync --locked` followed by this command.
-- `uv run ruff check .` checks lint; `uv run ruff format --check .` checks formatting.
+Use Python 3.13 and `uv`:
 
-Use Python 3.13 for parity with CI. Indexing and search may download the embedding model on first use.
+- `uv sync --locked` installs the locked dependencies, including development tools.
+- `uv run rag index` indexes documents in `knowledge/`; rerun it after adding, changing, or deleting files.
+- `uv run rag serve` starts the MCP server over stdio. Both CLI commands accept `--directory PATH`.
+- `uv run pytest` runs the standard test suite; `uv run mypy .` runs the type checker, as in CI.
+- `uv run pre-commit run --all-files` runs Ruff checks, formatting, and mypy. Ruff hooks may modify files.
 
-## Style and Naming
+## Coding Style & Naming Conventions
 
-Follow Ruff formatting and lint rules, with four-space Python indentation and type annotations where useful. Use `snake_case` for functions and variables, `PascalCase` for classes, and descriptive `test_...` test names. Keep runtime imports lazy where they avoid loading heavy ML dependencies for unrelated commands.
+Follow the existing Python style: four-space indentation, `snake_case` functions and modules, and `PascalCase` classes. Add type annotations where practical. Ruff enforces lint rules and Google-style docstrings for source code; tests are exempt from docstring rules. Use `uv run ruff check .` and `uv run ruff format .` to check and format code.
 
-## Testing
+## Testing Guidelines
 
-Tests use `unittest` assertions and mocking, collected by pytest. Add or update focused tests in `tests/test_rag.py` for behavior changes, especially index updates, deleted files, empty inputs, and interrupted indexing. There is no stated coverage threshold.
+Tests use pytest, with `unittest` and mocks in parts of the suite. Name files `test_*.py` and test methods `test_*`; use temporary directories and fake models for fast, isolated tests. No general coverage threshold is configured. For retrieval changes, optionally run `RAG_QUALITY_TEST=1 uv run pytest -q tests/test_retrieval_quality.py`; this uses the real embedding model and checks Recall@3 and MRR@3 thresholds.
 
-## Commits and Pull Requests
+## Commit & Pull Request Guidelines
 
-Recent commits use short, lowercase summaries (for example, `reformat` and `added ruff`); no stricter convention is established. Keep commit subjects concise and action-oriented. Pull requests should explain the user-visible or operational change, link related issues when applicable, and include test results. Include screenshots only when a change adds a visual interface.
+Recent commits use short, informal, lowercase descriptions such as `updated chunk function`; keep messages concise and describe the change. Pull requests should explain the behavior changed, note relevant issues, and report checks run. Include examples when changing CLI or MCP behavior, and update the README when usage changes.
 
-## Configuration and Data
+## Configuration & Data
 
-Do not commit `.rag/`, `knowledge/`, credentials, or downloaded model files. Use UTF-8 for Markdown input. The index is local and can be regenerated with `uv run rag index`.
+The first real embedding-model use may download the model from Hugging Face. Avoid committing local indexes or private knowledge documents; review `knowledge/` content before adding it to Git.
