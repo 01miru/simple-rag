@@ -54,7 +54,7 @@ class DocumentToolsTest(unittest.TestCase):
             list_documents(self.root, limit=0)
 
     def test_get_document_reads_line_range_without_loading_model(self):
-        with patch("rag.model", side_effect=AssertionError("model loaded")):
+        with patch("rag._shared.model", side_effect=AssertionError("model loaded")):
             result = get_document(self.root, "knowledge/folder/ą note.md", 2, 1)
         self.assertEqual(result["content"], "środkowa")
         self.assertEqual(

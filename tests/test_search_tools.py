@@ -45,7 +45,7 @@ class SearchToolTest(unittest.TestCase):
             file = knowledge / path
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_text(text, encoding="utf-8")
-        self.model_patch = patch("rag.model", return_value=FakeModel())
+        self.model_patch = patch("rag._shared.model", return_value=FakeModel())
         self.model_patch.start()
         self.addCleanup(self.model_patch.stop)
         index(self.root)
@@ -93,7 +93,7 @@ class SearchToolTest(unittest.TestCase):
         )
 
     def test_empty_query_and_missing_index_do_not_load_model(self):
-        with patch("rag.model", side_effect=AssertionError("model loaded")):
+        with patch("rag._shared.model", side_effect=AssertionError("model loaded")):
             self.assertIn("niepuste", self.text(self.call(query="")))
             missing = create_server(self.root / "missing")
 

@@ -92,7 +92,7 @@ class RagTest(unittest.TestCase):
         )
         self.assertEqual("".join(p["text"] for p in parts).count("kot"), 81)
 
-    @patch("rag.model", return_value=FakeModel())
+    @patch("rag._shared.model", return_value=FakeModel())
     def test_search_returns_section_metadata(self, _model):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -113,7 +113,7 @@ class RagTest(unittest.TestCase):
             [part["section"] for part in parts], ["Tytuł", "Tytuł > Sekcja"]
         )
 
-    @patch("rag.model", return_value=FakeModel())
+    @patch("rag._shared.model", return_value=FakeModel())
     def test_index_search_rebuild_and_empty(self, _model):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -146,7 +146,7 @@ class RagTest(unittest.TestCase):
             self.assertEqual(index(root), 0)
             self.assertIn("Brak dokumentów", search(root, "kot"))
 
-    @patch("rag.model", return_value=FakeModel())
+    @patch("rag._shared.model", return_value=FakeModel())
     def test_empty_markdown_file_can_be_indexed_and_updated(self, _model):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -199,14 +199,14 @@ class RagTest(unittest.TestCase):
                     raise RuntimeError("interrupted")
                 return fake.encode(texts, normalize_embeddings)
 
-            with patch("rag.model") as mocked:
+            with patch("rag._shared.model") as mocked:
                 mocked.return_value.tokenizer = fake.tokenizer
                 mocked.return_value.max_seq_length = fake.max_seq_length
                 mocked.return_value.encode.side_effect = encode
                 with self.assertRaises(RuntimeError):
                     index(root)
             self.assertEqual(calls[0], 64)
-            with patch("rag.model", return_value=fake):
+            with patch("rag._shared.model", return_value=fake):
                 count = index(root)
                 import lancedb
 
