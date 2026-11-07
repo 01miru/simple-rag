@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from mcp.server.fastmcp.exceptions import ToolError
 
-from rag import create_server, index
+from rag import create_server, index, search
 
 
 class FakeModel:
@@ -91,6 +91,24 @@ class SearchToolTest(unittest.TestCase):
         self.assertIn(
             "Brak wyników", self.text(self.call(path_prefix="knowledge/missing"))
         )
+        direct = search(self.root, "target", 1, "knowledge/project/")
+        self.assertIn("knowledge/project/", direct)
+        self.assertNotIn("project-neighbor", direct)
+        self.assertIn(
+            "knowledge/percent%_name.md",
+            search(self.root, "target", path_prefix="knowledge/percent%_name.md"),
+        )
+
+    def test_empty_and_missing_table_messages(self):
+        import lancedb
+
+        db = lancedb.connect(str(self.root / ".rag" / "lancedb"))
+        db.open_table("knowledge").delete("path IS NOT NULL")
+        self.assertIn("Brak dokumentów", search(self.root, "target"))
+        self.assertEqual("Brak wyników.", self.text(self.call()))
+        db.drop_table("knowledge")
+        self.assertIn("Brak dokumentów", search(self.root, "target"))
+        self.assertIn("Brak indeksu", self.text(self.call()))
 
     def test_empty_query_and_missing_index_do_not_load_model(self):
         with patch("rag._shared.model", side_effect=AssertionError("model loaded")):

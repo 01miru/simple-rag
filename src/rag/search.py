@@ -9,8 +9,16 @@ from . import _shared
 from ._shared import TABLE
 
 
-def search(root: Path, query: str, limit: int = 5) -> str:
+def search(
+    root: Path, query: str, limit: int = 5, path_prefix: str | None = None
+) -> str:
     """Search the index and return formatted matching fragments."""
+    return _search(root, query, limit, path_prefix)
+
+
+def _search(
+    root: Path, query: str, limit: int, path_prefix: str | None, *, mcp: bool = False
+) -> str:
     import lancedb
     from lancedb.query import LanceVectorQueryBuilder
 
@@ -23,15 +31,27 @@ def search(root: Path, query: str, limit: int = 5) -> str:
 
     db = lancedb.connect(str(db_path))
     if TABLE not in db.list_tables():
+        if mcp:
+            return "Brak indeksu. Uruchom `rag index`."
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
     table = db.open_table(TABLE)
-    if table.count_rows() == 0:
+    if not mcp and table.count_rows() == 0:
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
 
     vector = _shared.model().encode(query, normalize_embeddings=True).tolist()
-    request = cast(LanceVectorQueryBuilder, table.search(vector))
-    results = request.distance_type("cosine").limit(limit).to_list()
+    request = cast(LanceVectorQueryBuilder, table.search(vector)).distance_type(
+        "cosine"
+    )
+    if path_prefix:
+        prefix = path_prefix.rstrip("/")
+        literal = prefix.replace("'", "''")
+        escaped = literal.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        predicate = f"path = '{literal}' OR path LIKE '{escaped}/%' ESCAPE '\\'"
+        request = request.where(predicate, prefilter=True)
+    results = request.limit(limit).to_list()
 
+    if not results and path_prefix:
+        return "Brak wyników dla podanej ścieżki."
     return format_results(results) or "Brak wyników."
 
 

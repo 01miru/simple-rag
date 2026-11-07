@@ -2,12 +2,9 @@
 
 import argparse
 from pathlib import Path
-from typing import cast
 
-from . import _shared
-from ._shared import TABLE
 from .indexing import index
-from .search import format_results
+from .search import _search
 from .search import get_document as read_document
 from .search import list_documents as find_documents
 
@@ -50,38 +47,7 @@ def create_server(root: Path):
         """Wyszukaj semantycznie fragmenty; używaj do odnajdywania źródeł (limit 1..50)."""
         if not 1 <= limit <= 50:
             raise ValueError("limit musi być z zakresu 1..50.")
-        if not query.strip():
-            return "Podaj niepuste zapytanie."
-        import lancedb
-        from lancedb.query import LanceVectorQueryBuilder
-
-        db_path = root / ".rag" / "lancedb"
-        if (
-            not db_path.exists()
-            or TABLE not in lancedb.connect(str(db_path)).list_tables()
-        ):
-            return "Brak indeksu. Uruchom `rag index`."
-        table = lancedb.connect(str(db_path)).open_table(TABLE)
-        predicate = None
-        if path_prefix:
-            prefix = path_prefix.rstrip("/")
-            escaped = (
-                prefix.replace("'", "''")
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_")
-            )
-            predicate = f"path = '{escaped}' OR path LIKE '{escaped}/%' ESCAPE '\\'"
-        vector = _shared.model().encode(query, normalize_embeddings=True).tolist()
-        request = cast(LanceVectorQueryBuilder, table.search(vector)).distance_type(
-            "cosine"
-        )
-        if predicate:
-            request = request.where(predicate, prefilter=True)
-        rows = request.limit(limit).to_list()
-        if not rows and path_prefix:
-            return "Brak wyników dla podanej ścieżki."
-        return format_results(rows) or "Brak wyników."
+        return _search(root, query, limit, path_prefix, mcp=True)
 
     @server.tool()
     def list_documents(
