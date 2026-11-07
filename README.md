@@ -2,9 +2,9 @@
 
 [![Testy](https://github.com/01miru/simple-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/01miru/simple-rag/actions/workflows/tests.yml)
 
-Projekt wyszukuje informacje w polskich i wielojęzycznych plikach Markdown za pomocą wyszukiwania semantycznego. Embeddingi i indeks tworzy lokalnie. Serwer MCP udostępnia wyszukiwanie Codexowi oraz innym aplikacjom i agentom obsługującym MCP.
+Projekt wyszukuje informacje w polskich i wielojęzycznych plikach Markdown. Indeks i embeddingi powstają lokalnie. Serwer MCP udostępnia dokumenty Codexowi i innym klientom obsługującym MCP.
 
-Polecenia `rag index` i `rag serve` uruchamia się w terminalu. Do indeksowania potrzebny jest katalog `knowledge/`. Narzędzie MCP `search_knowledge` zwraca fragmenty dokumentów wraz ze źródłem i oceną podobieństwa. Źródłem jest ścieżka pliku względem katalogu projektu, więc fragmenty tego samego pliku mają ten sam identyfikator. Podobieństwo cosinusowe ma wartość od -1 do 1; im jest większe, tym wynik jest bardziej podobny do zapytania. Sposób konfiguracji klienta MCP znajdziesz w dokumentacji używanej aplikacji.
+Polecenia `rag index` i `rag serve` uruchomisz w terminalu. Indeksowanie wymaga katalogu `knowledge/`. Serwer udostępnia trzy narzędzia: `search_knowledge` wyszukuje fragmenty, `list_documents` pokazuje zaindeksowane pliki, a `get_document` pobiera wskazany zakres linii. Każde źródło ma ścieżkę względem katalogu projektu. Podobieństwo cosinusowe mieści się w zakresie od -1 do 1. Im wyższa wartość, tym bardziej fragment przypomina zapytanie. Konfigurację klienta MCP opisuje dokumentacja danej aplikacji.
 
 ## Jak to działa
 
@@ -13,7 +13,7 @@ flowchart LR
     A[Pliki Markdown w knowledge/] -->|rag index| B[Podział na fragmenty]
     B --> C[Embeddingi z sentence-transformers]
     C --> D[(LanceDB w .rag/lancedb/)]
-    E[Aplikacja obsługująca MCP] -->|zapytanie przez search_knowledge| F[Serwer MCP]
+    E[Aplikacja obsługująca MCP] -->|wyszukiwanie, lista lub odczyt| F[Serwer MCP]
     F --> G[Embedding zapytania]
     G --> D
     D -->|najbardziej podobne fragmenty i ścieżki| F
@@ -27,11 +27,11 @@ flowchart LR
 - PyTorch uruchamia model na CPU albo na karcie NVIDIA obsługującej CUDA.
 - FastMCP udostępnia wyszukiwanie przez MCP, korzystając z transportu `stdio`.
 
-Pakiety zainstalujesz poleceniem `uv sync`. Przy pierwszym użyciu model zostanie pobrany z Hugging Face. Potrzebujesz do tego dostępu do internetu i wolnego miejsca na dysku. Jeśli masz kartę NVIDIA z CUDA, PyTorch jej użyje. W przeciwnym razie model działa na CPU.
+Zainstaluj pakiety poleceniem `uv sync`. Przy pierwszym użyciu model pobierze się z Hugging Face, co wymaga dostępu do internetu i miejsca na dysku. PyTorch użyje karty NVIDIA z CUDA, jeśli jest dostępna; w pozostałych przypadkach model działa na CPU.
 
 ## Instalacja i indeksowanie
 
-Projekt wymaga Python 3.13 i [uv](https://docs.astral.sh/uv/). W katalogu projektu uruchom:
+Potrzebujesz Python 3.13 i [uv](https://docs.astral.sh/uv/). W katalogu projektu uruchom:
 
 ```sh
 uv sync
@@ -39,28 +39,62 @@ uv sync
 uv run rag index
 ```
 
-Po dodaniu, zmianie lub usunięciu dokumentów uruchom ponownie `uv run rag index`. Polecenie przetwarza treść partiami: aktualizuje zmienione pliki w indeksie `.rag/` i usuwa z niego brakujące dokumenty. Pliki muszą być zapisane w UTF-8. Po aktualizacji ze starszej wersji pierwsze uruchomienie przebuduje indeks.
+Po dodaniu, zmianie lub usunięciu dokumentów ponownie uruchom `uv run rag index`. Polecenie aktualizuje zmienione pliki i usuwa z indeksu `.rag/` te, których już nie ma. Dokumenty zapisuj w UTF-8. Pierwsze indeksowanie po aktualizacji ze starszej wersji przebuduje indeks.
 
-Dokumenty są dzielone według nagłówków i bloków Markdown, z limitem tokenów modelu embeddingowego. Wyniki zawierają ścieżkę nagłówków sekcji. Bloki kodu i tabele, które mieszczą się w limicie, pozostają w całości; większe bloki są dzielone, aby model nie pomijał ich końcowej treści.
+Indeks dzieli dokumenty według nagłówków i bloków Markdown, pilnując limitu tokenów modelu embeddingowego. Wyniki zawierają ścieżkę nagłówków sekcji. Bloki kodu i tabele mieszczące się w limicie pozostają w całości. Dłuższe bloki są dzielone.
+
+## Narzędzia MCP
+
+Użyj `search_knowledge`, aby znaleźć dokumenty związane z pytaniem. `list_documents` pokazuje pliki w indeksie, a `get_document` pobiera wybrany fragment do sprawdzenia.
+
+### `search_knowledge`
+
+```text
+search_knowledge(query, limit=5, path_prefix=null)
+```
+
+- `query` — niepuste pytanie lub fraza.
+- `limit` — liczba fragmentów, od 1 do 50; domyślnie 5.
+- `path_prefix` — opcjonalna ścieżka względna względem katalogu projektu. Pełna ścieżka pliku dopasowuje ten plik, a ścieżka katalogu dopasowuje jego zawartość z granicą segmentu. Na przykład `knowledge/projekt/` nie obejmuje `knowledge/projekt-inny/`.
+
+Wynik zawiera źródło, sekcję, podobieństwo i treść. Przykład: `search_knowledge("zasady zwrotu kosztów", limit=8, path_prefix="knowledge/podróże/")`.
+
+### `list_documents`
+
+```text
+list_documents(path_prefix=null, limit=100, offset=0)
+```
+
+Zwraca ścieżki plików z manifestu indeksu oraz pola `total`, `limit`, `offset` i `has_more`. Limit wynosi od 1 do 500, a offset nie może być ujemny. Lista jest sortowana po ścieżce. Aby pobrać następną stronę, dodaj limit do offsetu.
+
+### `get_document`
+
+```text
+get_document(path, start_line=1, max_lines=200)
+```
+
+Odczytuje plik `.md` z katalogu `knowledge/`, o ile plik znajduje się w indeksie i nie zmienił się od ostatniego indeksowania. Numeracja linii zaczyna się od 1, a `max_lines` może wynosić od 1 do 500. Odpowiedź podaje ścieżkę, zakres i łączną liczbę linii, treść oraz `has_more`. Po zmianie pliku narzędzie poprosi o ponowne uruchomienie `rag index`.
+
+Możesz poprosić Codexa: „Znajdź dokumenty o zasadach zwrotów”, „Porównaj dwie polityki i wskaż różnice” albo „Podaj wnioski z tych dokumentów wraz ze źródłami”. Wyszukiwanie semantyczne wybiera fragmenty podobne do zapytania i może pominąć część bazy. Przy porównaniu dokumentów sprawdź wymagane źródła przez `list_documents` i `get_document`.
 
 ## Testy jakości wyszukiwania
 
-Szybkie testy uruchom poleceniem `uv run pytest`. Osobny test jakości korzysta z rzeczywistego modelu: indeksuje sześć przykładowych dokumentów i sprawdza zapytania po polsku i angielsku. Uruchomisz go tak:
+Szybki zestaw testów jednostkowych i integracyjnych używa atrap modelu. Uruchomisz go poleceniem `uv run pytest`. Opcjonalny test jakości korzysta z prawdziwego modelu, indeksuje sześć przykładowych dokumentów i sprawdza pytania po polsku oraz angielsku. Włączysz go tak:
 
 ```sh
 RAG_QUALITY_TEST=1 uv run pytest -q tests/test_retrieval_quality.py
 ```
 
-Test wymaga co najmniej 5 trafień na 6 zapytań w pierwszych trzech wynikach (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynosić co najmniej 0,65. Przy pierwszym uruchomieniu model może zostać pobrany. Ten niewielki zestaw pomaga wykryć regresje, ale nie mierzy jakości wyszukiwania we własnych dokumentach.
+Test wymaga, by właściwy dokument znalazł się w pierwszej trójce dla co najmniej pięciu z sześciu pytań (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynieść co najmniej 0,65. Pierwsze uruchomienie może pobrać model. Zestaw wykrywa regresje, ale nie ocenia jakości wyszukiwania w Twoich dokumentach.
 
 ## Podłączenie do Codexa
 
-Podłącz Codexa do serwera MCP poniższym poleceniem. Zastąp przykładowe ścieżki bezwzględną ścieżką do projektu:
+Podłącz Codexa do serwera MCP:
 
 ```sh
 codex mcp add lokalna-wiedza -- /ABSOLUTNA/SCIEZKA/DO/rag/.venv/bin/rag serve --directory /ABSOLUTNA/SCIEZKA/DO/rag
 ```
 
-Sprawdź konfigurację poleceniem `codex mcp list`, a potem uruchom ponownie sesję Codexa. Możesz poprosić na przykład: „Wyszukaj w lokalnej wiedzy informacje o … i podaj źródła”. Codex korzysta wtedy z fragmentów dokumentów i ścieżek zwróconych przez `search_knowledge`. Więcej informacji o konfiguracji MCP znajdziesz w [dokumentacji OpenAI](https://developers.openai.com/codex/mcp/).
+Zastąp przykładowe ścieżki w poleceniu bezwzględną ścieżką do projektu. Konfigurację sprawdzisz poleceniem `codex mcp list`; potem uruchom ponownie sesję Codexa. Możesz zapytać na przykład: „Wyszukaj w lokalnej wiedzy informacje o … i podaj źródła”. Więcej informacji znajdziesz w [dokumentacji OpenAI](https://developers.openai.com/codex/mcp/).
 
 Do indeksu i modelu nie potrzebujesz klucza API. Korzystanie z Codexa podlega ustawieniom wybranej usługi Codex.
