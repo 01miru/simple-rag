@@ -66,7 +66,7 @@ class RagTest(unittest.TestCase):
                 ):
                     model()
                 sentence_transformers.SentenceTransformer.assert_called_once_with(
-                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                    "intfloat/multilingual-e5-large",
                     device=device,
                 )
         model.cache_clear()
@@ -119,12 +119,13 @@ class RagTest(unittest.TestCase):
         text = "Bez nagłówka.\n\n# Zwierzęta\n## Kot\n" + "kot " * 80
         parts = list(chunks(text, tokenizer, 24))
         self.assertEqual(
-            embedding_text(parts[0]["text"], "", tokenizer, 24), parts[0]["text"]
+            embedding_text(parts[0]["text"], "", tokenizer, 24),
+            "passage: " + parts[0]["text"],
         )
         self.assertGreater(len(parts), 3)
         for part in parts[2:]:
             encoded = embedding_text(part["text"], part["section"], tokenizer, 24)
-            self.assertTrue(encoded.startswith("Zwierzęta > Kot\n\n"))
+            self.assertTrue(encoded.startswith("passage: Zwierzęta > Kot\n\n"))
             self.assertTrue(encoded.endswith(part["text"]))
             self.assertLessEqual(len(tokenizer.encode(encoded)), 24)
 
@@ -170,9 +171,13 @@ class RagTest(unittest.TestCase):
                 encoded = fake.encode.call_args.args[0]
                 self.assertEqual(
                     encoded,
-                    ["Zwierzęta\n\n# Zwierzęta", "Zwierzęta > Kot\n\n## Kot\nKot śpi."],
+                    [
+                        "passage: Zwierzęta\n\n# Zwierzęta",
+                        "passage: Zwierzęta > Kot\n\n## Kot\nKot śpi.",
+                    ],
                 )
                 result = search(root, "kot")
+                fake.encode.assert_called_with("query: kot", normalize_embeddings=True)
                 self.assertIn("Sekcja: Zwierzęta > Kot", result)
                 self.assertIn("## Kot\nKot śpi.", result)
                 manifest_path = root / ".rag" / "manifest.json"
@@ -180,6 +185,8 @@ class RagTest(unittest.TestCase):
                 manifest["version"] = "old"
                 manifest_path.write_text(json.dumps(manifest))
                 fake.encode.reset_mock()
+                self.assertIn("przebudowy", search(root, "kot"))
+                fake.encode.assert_not_called()
                 self.assertEqual(index(root), 2)
                 fake.encode.assert_called_once()
 

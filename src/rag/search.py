@@ -38,7 +38,19 @@ def _search(
     if not mcp and table.count_rows() == 0:
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
 
-    vector = _shared.model().encode(query, normalize_embeddings=True).tolist()
+    try:
+        manifest = json.loads(
+            (root / ".rag" / "manifest.json").read_text(encoding="utf-8")
+        )
+        compatible = manifest.get("version") == _shared.INDEX_VERSION
+    except (OSError, ValueError, AttributeError):
+        compatible = False
+    if not compatible:
+        return "Indeks wymaga przebudowy. Uruchom `rag index`."
+
+    vector = (
+        _shared.model().encode(f"query: {query}", normalize_embeddings=True).tolist()
+    )
     request = cast(LanceVectorQueryBuilder, table.search(vector)).distance_type(
         "cosine"
     )

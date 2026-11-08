@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+MODEL = "intfloat/multilingual-e5-large"
 TABLE = "knowledge"
 BATCH_SIZE = 64
 INDEX_VERSION = f"{MODEL}:markdown-tokens-v2"

@@ -23,7 +23,7 @@ flowchart LR
 ## Pakiety i baza wektorowa
 
 - LanceDB przechowuje wektory i fragmenty dokumentów w `.rag/lancedb/`, a stan indeksowania plików w `.rag/manifest.json`.
-- sentence-transformers tworzy embeddingi za pomocą modelu `paraphrase-multilingual-MiniLM-L12-v2` z Hugging Face.
+- sentence-transformers tworzy embeddingi za pomocą modelu `intfloat/multilingual-e5-large` z Hugging Face.
 - PyTorch uruchamia model na CPU albo na karcie NVIDIA obsługującej CUDA.
 - FastMCP udostępnia wyszukiwanie przez MCP, korzystając z transportu `stdio`.
 
@@ -39,7 +39,7 @@ uv sync
 uv run rag index
 ```
 
-Po dodaniu, zmianie lub usunięciu dokumentów ponownie uruchom `uv run rag index`. Polecenie aktualizuje zmienione pliki i usuwa z indeksu `.rag/` te, których już nie ma. Dokumenty zapisuj w UTF-8. Pierwsze indeksowanie po aktualizacji ze starszej wersji przebuduje indeks.
+Po dodaniu, zmianie lub usunięciu dokumentów ponownie uruchom `uv run rag index`. Polecenie aktualizuje zmienione pliki i usuwa z indeksu `.rag/` te, których już nie ma. Dokumenty zapisuj w UTF-8. Po zmianie modelu uruchom ponownie `uv run rag index`, aby przebudować indeks przed wyszukiwaniem.
 
 Indeks dzieli dokumenty według nagłówków i bloków Markdown, pilnując limitu tokenów modelu embeddingowego. Model otrzymuje ścieżkę nagłówków razem z treścią fragmentu; długie ścieżki są skracane, aby zostawić miejsce na treść. Wyniki zawierają oryginalną treść i pełną ścieżkę nagłówków sekcji. Bloki kodu i tabele mieszczące się w limicie pozostają w całości. Dłuższe bloki są dzielone.
 

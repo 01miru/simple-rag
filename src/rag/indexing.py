@@ -23,7 +23,8 @@ def embedding_text(text: str, section: str, tokenizer, limit: int) -> str:
         else:
             high = mid - 1
     prefix = section[:low].strip()
-    return f"{prefix}\n\n{text}" if prefix else text
+    content = f"{prefix}\n\n{text}" if prefix else text
+    return f"passage: {content}"
 
 
 def chunks(text: str, tokenizer, limit: int):
