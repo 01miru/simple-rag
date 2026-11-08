@@ -1,7 +1,7 @@
 [project]
 name = "rag"
 version = "0.1.0"
-description = "Lokalne wyszukiwanie wiedzy dla Codexa"
+description = "Lokalny RAG dla aplikacji obsługujących MCP"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = ["lancedb>=0.20", "mcp>=1.0,<2", "sentence-transformers>=3.0"]
