@@ -10,6 +10,7 @@ wheels/
 .mypy_cache/
 # Virtual environments
 .venv
+.env
 
 # Lokalny indeks wiedzy
 .rag/

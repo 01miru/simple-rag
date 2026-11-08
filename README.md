@@ -87,6 +87,8 @@ RAG_QUALITY_TEST=1 uv run pytest -q tests/test_retrieval_quality.py
 
 Test wymaga, by właściwy dokument znalazł się w pierwszej trójce dla co najmniej pięciu z sześciu pytań (Recall@3). Średnia odwrotność pozycji właściwego wyniku (MRR@3) musi wynieść co najmniej 0,65. Pierwsze uruchomienie może pobrać model. Zestaw wykrywa regresje, ale nie ocenia jakości wyszukiwania w Twoich dokumentach.
 
+Szybkie testy sprawdzają też podział długiego fikcyjnego dokumentu Markdown, w tym limit tokenów, treść i nagłówki. Opcjonalny test jakości indeksuje ten dokument osobno i sprawdza, czy odpowiednie fragmenty z początku, środka i końca pojawiają się w pierwszej trójce wyników. Nie ocenia odpowiedzi generowanych przez LLM.
+
 ## Podłączenie do Codexa
 
 Podłącz Codexa do serwera MCP:

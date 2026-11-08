@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 from rag import index, search
 
 DOCUMENTS = {
@@ -25,6 +27,36 @@ QUERIES = (
     ("Jak otrzymać zwrot za hotel podczas delegacji?", "podroze.md"),
     ("How can I access the company network remotely?", "vpn.md"),
 )
+
+
+@pytest.fixture(scope="module")
+def long_document_index(tmp_path_factory):
+    root = tmp_path_factory.mktemp("long_document")
+    source = root / "knowledge"
+    source.mkdir()
+    document = Path(__file__).parent / "fixtures" / "podrecznik.md"
+    (source / document.name).write_text(
+        document.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    index(root)
+    return root
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAG_QUALITY_TEST") != "1",
+    reason="Set RAG_QUALITY_TEST=1 to run the real-model benchmark",
+)
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("Po jakim czasie wygasa karta gościa?", "48 godzinach"),
+        ("W jakiej temperaturze przechowywać odczynniki wzorcowe?", "2 do 8 stopni"),
+        ("Pod jaki numer zadzwonić w razie awarii chłodni?", "numer 742"),
+    ],
+)
+def test_long_document_fragments(long_document_index, query, expected):
+    results = search(long_document_index, query, limit=3).split("\n\n---\n\n")
+    assert any(expected in result for result in results), query
 
 
 @unittest.skipUnless(
