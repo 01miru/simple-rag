@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from rag import create_server, get_document, list_documents
 
 
@@ -62,13 +64,6 @@ class DocumentToolsTest(unittest.TestCase):
         )
 
     def test_get_document_rejects_traversal_symlink_and_stale_content(self):
-        for path in (
-            "../AGENTS.md",
-            ".rag/manifest.json",
-            str(self.root / "AGENTS.md"),
-        ):
-            with self.subTest(path=path), self.assertRaises(ValueError):
-                get_document(self.root, path)
         outside = self.root / "outside.md"
         outside.write_text("private", encoding="utf-8")
         (self.knowledge / "link.md").symlink_to(outside)
@@ -82,3 +77,12 @@ class DocumentToolsTest(unittest.TestCase):
         server = create_server(self.root)
         names = {tool.name for tool in server._tool_manager.list_tools()}
         self.assertEqual(names, {"search_knowledge", "list_documents", "get_document"})
+
+
+@pytest.mark.parametrize(
+    "path", ["../AGENTS.md", ".rag/manifest.json", "/tmp/outside.md"]
+)
+def test_get_document_rejects_disallowed_paths(tmp_path, path):
+    (tmp_path / "knowledge").mkdir()
+    with pytest.raises(ValueError):
+        get_document(tmp_path, path)

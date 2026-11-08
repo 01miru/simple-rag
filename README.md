@@ -50,14 +50,14 @@ Użyj `search_knowledge`, aby znaleźć dokumenty związane z pytaniem. `list_do
 ### `search_knowledge`
 
 ```text
-search_knowledge(query, limit=5, path_prefix=null)
+search_knowledge(query, limit=5, path_prefix=null, mode="hybrid")
 ```
 
 - `query` — niepuste pytanie lub fraza.
 - `limit` — liczba fragmentów, od 1 do 50; domyślnie 5.
 - `path_prefix` — opcjonalna ścieżka względna względem katalogu projektu. Pełna ścieżka pliku dopasowuje ten plik, a ścieżka katalogu dopasowuje jego zawartość z granicą segmentu. Na przykład `knowledge/projekt/` nie obejmuje `knowledge/projekt-inny/`.
 
-Wynik zawiera źródło, sekcję, podobieństwo i treść. Przykład: `search_knowledge("zasady zwrotu kosztów", limit=8, path_prefix="knowledge/podróże/")`.
+Wynik to JSON z listą `results`. Każdy fragment ma pola `source`, `section`, `content`, `score`, `semantic_similarity` i `matched_by`. Domyślny tryb `hybrid` zwraca wynik RRF, `semantic` używa podobieństwa cosinusowego, a `keyword` używa BM25. Wyniki mają różne skale w zależności od trybu. W razie błędu odpowiedź zawiera pole `error`. Po aktualizacji uruchom `rag index`, aby przebudować indeks. Przykład: `search_knowledge("zasady zwrotu kosztów", limit=8, path_prefix="knowledge/podróże/")`.
 
 ### `list_documents`
 
@@ -105,3 +105,21 @@ W pliku [knowledge-agent/instructions.md](knowledge-agent/instructions.md) znajd
 - Inny klient MCP: jeśli aplikacja na to pozwala, wklej treść pliku jako instrukcję systemową lub instrukcję własnego agenta. Możesz też wkleić ją na początku rozmowy.
 
 Nie każda aplikacja korzysta automatycznie z projektowego pliku `.mcp.json`. Jeśli klient uruchamia serwer z innego katalogu roboczego, zastąp w jego konfiguracji oba wystąpienia `.` po `--project` i `--directory` bezwzględną ścieżką do tego projektu. Sprawdź też, czy aplikacja ma dostęp do `uv`.
+
+### Ocena własnego korpusu
+
+Przygotuj poza repozytorium plik JSON z pytaniami i oczekiwanymi źródłami, na przykład:
+
+```json
+[
+  {"query": "przykładowe pytanie", "source": "knowledge/dokument.md", "category": "lexical", "content_contains": "oczekiwany fragment"}
+]
+```
+
+Pola `query`, `source` i `category` są wymagane. W polu `content_contains` możesz wskazać fragment dłuższego dokumentu. Kategoria `all` jest zarezerwowana dla wyników zbiorczych. Po zaindeksowaniu dokumentów uruchom:
+
+```sh
+uv run python -m rag.evaluate /ścieżka/do/projektu /ścieżka/do/pytań.json
+```
+
+Raport JSON podaje liczbę pytań, Recall i MRR przy limitach 3 i 5 oraz medianę czasu dla każdego trybu i kategorii. Pomiar obejmuje całą funkcję wyszukiwania po rozgrzaniu modelu. Raport nie zawiera pytań ani treści dokumentów. Użyj pytań niezależnych od zestawu do strojenia. Jeśli zawierają dane prywatne, pozostaw je poza repozytorium.

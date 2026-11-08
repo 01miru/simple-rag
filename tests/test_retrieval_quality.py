@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from rag import index, search
+from rag.search import search_results
 
 DOCUMENTS = {
     "urlopy.md": "Pracownicy składają wnioski o urlop wypoczynkowy w systemie kadrowym. Wniosek zatwierdza przełożony.",
@@ -136,3 +137,85 @@ def test_retrieval_quality(sample_documents_index, queries, limit, min_recall, m
     )
     assert recall >= min_recall, f"Recall@{limit}={recall:.2f}; {details}"
     assert mrr >= min_mrr, f"MRR@{limit}={mrr:.2f}; {details}"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAG_QUALITY_TEST") != "1", reason="Set RAG_QUALITY_TEST=1"
+)
+def test_original_hybrid_comparison(sample_documents_index):
+    queries = [
+        ("Jak poprosić o wolne od pracy?", "urlopy.md"),
+        ("Nie pamiętam danych logowania. Jak odzyskać dostęp?", "hasla.md"),
+        ("Ile mam czasu na oddanie zamówienia?", "zwroty.md"),
+        ("Jak długo przechowywany jest backup bazy?", "kopie.md"),
+        ("Jak otrzymać zwrot za hotel podczas delegacji?", "podroze.md"),
+        ("How can I access the company network remotely?", "vpn.md"),
+    ]
+    metrics = {}
+    for mode in ("semantic", "hybrid"):
+        ranks = []
+        for query, expected in queries:
+            results = search_results(sample_documents_index, query, limit=5, mode=mode)
+            assert isinstance(results, list)
+            paths = [result["source"] for result in results]
+            target = f"knowledge/{expected}"
+            ranks.append(paths.index(target) + 1 if target in paths else 0)
+        metrics[mode] = {
+            f"{metric}@{k}": sum(
+                (1 if metric == "recall" else 1 / rank)
+                for rank in ranks
+                if 0 < rank <= k
+            )
+            / len(ranks)
+            for k in (3, 5)
+            for metric in ("recall", "mrr")
+        }
+    print("\nOriginal benchmark:", metrics)
+    for metric in ("recall@3", "mrr@3"):
+        assert metrics["hybrid"][metric] >= metrics["semantic"][metric]
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAG_QUALITY_TEST") != "1", reason="Set RAG_QUALITY_TEST=1"
+)
+def test_independent_long_document_comparison(long_document_index):
+    # These questions were not used to tune the hybrid ranking. The existing
+    # three long-document queries are deliberately excluded.
+    cases = [
+        ("Co zrobić, gdy zginie identyfikator gościa?", "Utrata karty"),
+        ("Kto towarzyszy odwiedzającym w laboratoriach?", "Osoba zapraszająca"),
+        ("Jak oznaczać materiał biologiczny?", "inicjałami operatora"),
+        ("Co zrobić z uszkodzonym przewodem przyrządu?", "pozostaje wyłączone"),
+        ("Kiedy zdjąć rękawice ochronne?", "przed dotykaniem klamek"),
+        ("Jak często zapisuje się temperaturę?", "dwa razy dziennie"),
+        ("W jaki dzień przychodzą pojemniki na próbki?", "środa"),
+        ("Jak zabezpieczyć pojemniki przed wysyłką?", "materiałem amortyzującym"),
+        ("Kto przyznaje dostęp do katalogu zespołu?", "administrator"),
+        ("Kto sprawdza raport przed jego publikacją?", "druga osoba"),
+        ("Co przekazać następnej zmianie?", "Otwarte zadania"),
+        ("Co sprawdzić po naprawieniu chłodni?", "zapis temperatury"),
+    ]
+    metrics = {}
+    for mode in ("semantic", "hybrid"):
+        ranks = []
+        for query, expected in cases:
+            results = search_results(long_document_index, query, limit=5, mode=mode)
+            assert isinstance(results, list)
+            rank = next(
+                (i for i, row in enumerate(results, 1) if expected in row["content"]), 0
+            )
+            ranks.append(rank)
+        metrics[mode] = {
+            f"{metric}@{k}": sum(
+                (1 if metric == "recall" else 1 / rank)
+                for rank in ranks
+                if 0 < rank <= k
+            )
+            / len(ranks)
+            for k in (3, 5)
+            for metric in ("recall", "mrr")
+        }
+        metrics[mode]["ranks"] = ranks
+    print("\nIndependent long document:", metrics)
+    assert metrics["hybrid"]["recall@3"] >= metrics["semantic"]["recall@3"]
+    assert metrics["hybrid"]["mrr@3"] >= metrics["semantic"]["mrr@3"] - 0.03

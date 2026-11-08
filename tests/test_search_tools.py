@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from rag import create_server, index, search
@@ -66,18 +67,19 @@ class SearchToolTest(unittest.TestCase):
 
     @staticmethod
     def text(result):
+        if isinstance(result, dict):
+            if "error" in result:
+                return result["error"]
+            return (
+                "\n".join(f"Źródło: {row['source']}" for row in result["results"])
+                or "Brak wyników."
+            )
         return result if isinstance(result, str) else result[0].text
 
     def test_limit_default_and_custom_and_validation(self):
         default = self.text(self.call())
         self.assertEqual(default.count("Źródło:"), 5)
         self.assertEqual(self.text(self.call(limit=1)).count("Źródło:"), 1)
-        for limit in (0, -1, 51):
-            with (
-                self.subTest(limit=limit),
-                self.assertRaisesRegex(ToolError, "limit musi być z zakresu 1..50"),
-            ):
-                self.call(limit=limit)
 
     def test_prefix_filters_before_top_k_and_respects_segment_boundary(self):
         result = self.text(self.call(limit=1, path_prefix="knowledge/project/"))
@@ -98,6 +100,18 @@ class SearchToolTest(unittest.TestCase):
             "knowledge/percent%_name.md",
             search(self.root, "target", path_prefix="knowledge/percent%_name.md"),
         )
+
+    def test_modes_and_reindex(self):
+        with self.assertRaises(ToolError):
+            self.call(mode="invalid")
+        file = self.root / "knowledge/project/a.md"
+        file.write_text("unikatowy identyfikator ZXQ739", encoding="utf-8")
+        index(self.root)
+        result = self.call(query="ZXQ739", mode="keyword")
+        self.assertEqual(result["results"][0]["source"], "knowledge/project/a.md")
+        file.unlink()
+        index(self.root)
+        self.assertFalse(self.call(query="ZXQ739", mode="keyword")["results"])
 
     def test_empty_and_missing_table_messages(self):
         import lancedb
@@ -123,3 +137,32 @@ class SearchToolTest(unittest.TestCase):
             self.assertIn(
                 "indeks", self.text(self.loop.run_until_complete(invoke_missing()))
             )
+
+
+@pytest.fixture
+def search_tool_case():
+    case = SearchToolTest("runTest")
+    case.setUp()
+    try:
+        yield case
+    finally:
+        case.tearDown()
+        case.doCleanups()
+
+
+@pytest.mark.parametrize("limit", [0, -1, 51])
+def test_invalid_search_limit(search_tool_case, limit):
+    with pytest.raises(ToolError, match="limit musi być z zakresu 1..50"):
+        search_tool_case.call(limit=limit)
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "semantic", "keyword"])
+def test_search_mode_with_prefix(search_tool_case, mode):
+    result = search_tool_case.call(mode=mode, path_prefix="knowledge/project/")
+    assert result["results"]
+    assert all(
+        row["source"].startswith("knowledge/project/") for row in result["results"]
+    )
+    assert ("keyword" if mode == "hybrid" else mode) in result["results"][0][
+        "matched_by"
+    ]

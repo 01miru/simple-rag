@@ -4,9 +4,9 @@ import argparse
 from pathlib import Path
 
 from .indexing import index
-from .search import _search
 from .search import get_document as read_document
 from .search import list_documents as find_documents
+from .search import search_results
 
 
 def main() -> None:
@@ -42,12 +42,13 @@ def create_server(root: Path):
 
     @server.tool()
     def search_knowledge(
-        query: str, limit: int = 5, path_prefix: str | None = None
-    ) -> str:
-        """Wyszukaj semantycznie fragmenty; używaj do odnajdywania źródeł (limit 1..50)."""
+        query: str, limit: int = 5, path_prefix: str | None = None, mode: str = "hybrid"
+    ) -> dict:
+        """Wyszukaj fragmenty: hybrid (RRF), semantic (cosinus), keyword (BM25); limit 1..50."""
         if not 1 <= limit <= 50:
             raise ValueError("limit musi być z zakresu 1..50.")
-        return _search(root, query, limit, path_prefix, mcp=True)
+        result = search_results(root, query, limit, path_prefix, mcp=True, mode=mode)
+        return {"error": result} if isinstance(result, str) else {"results": result}
 
     @server.tool()
     def list_documents(

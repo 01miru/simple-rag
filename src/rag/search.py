@@ -19,8 +19,27 @@ def search(
 def _search(
     root: Path, query: str, limit: int, path_prefix: str | None, *, mcp: bool = False
 ) -> str:
+    result = search_results(root, query, limit, path_prefix, mcp=mcp, mode="semantic")
+    if isinstance(result, str):
+        return result
+    return format_results(result) or "Brak wyników."
+
+
+def search_results(
+    root: Path,
+    query: str,
+    limit: int = 5,
+    path_prefix: str | None = None,
+    *,
+    mcp: bool = False,
+    mode: str = "hybrid",
+) -> list[dict] | str:
+    """Search with semantic and/or full-text ranking."""
     import lancedb
     from lancedb.query import LanceVectorQueryBuilder
+
+    if mode not in ("hybrid", "semantic", "keyword"):
+        raise ValueError("mode musi być jednym z: hybrid, semantic, keyword.")
 
     if not query.strip():
         return "Podaj niepuste zapytanie."
@@ -42,37 +61,77 @@ def _search(
         manifest = json.loads(
             (root / ".rag" / "manifest.json").read_text(encoding="utf-8")
         )
-        compatible = manifest.get("version") == _shared.INDEX_VERSION
+        compatible = manifest.get(
+            "version"
+        ) == _shared.INDEX_VERSION and not manifest.get("fts_dirty")
     except (OSError, ValueError, AttributeError):
         compatible = False
     if not compatible:
         return "Indeks wymaga przebudowy. Uruchom `rag index`."
 
-    vector = (
-        _shared.model().encode(f"query: {query}", normalize_embeddings=True).tolist()
-    )
-    request = cast(LanceVectorQueryBuilder, table.search(vector)).distance_type(
-        "cosine"
-    )
+    predicate = None
     if path_prefix:
         prefix = path_prefix.rstrip("/")
         literal = prefix.replace("'", "''")
         escaped = literal.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         predicate = f"path = '{literal}' OR path LIKE '{escaped}/%' ESCAPE '\\'"
-        request = request.where(predicate, prefilter=True)
-    results = request.limit(limit).to_list()
 
-    if not results and path_prefix:
-        return "Brak wyników dla podanej ścieżki."
-    return format_results(results) or "Brak wyników."
+    rankings = []
+    candidate_k = max(limit * 5, 30) if mode == "hybrid" else limit
+    if mode in ("hybrid", "semantic"):
+        vector = (
+            _shared.model()
+            .encode(f"query: {query}", normalize_embeddings=True)
+            .tolist()
+        )
+        request = cast(LanceVectorQueryBuilder, table.search(vector)).distance_type(
+            "cosine"
+        )
+        if predicate:
+            request = request.where(predicate, prefilter=True)
+        rankings.append(("semantic", request.limit(candidate_k).to_list()))
+    if mode in ("hybrid", "keyword"):
+        fts_request = table.search(query, query_type="fts", fts_columns="fts_text")
+        if predicate:
+            fts_request = fts_request.where(predicate, prefilter=True)
+        rankings.append(("keyword", fts_request.limit(candidate_k).to_list()))
+
+    merged: dict[str, dict] = {}
+    for method, rows in rankings:
+        seen = set()
+        for rank, row in enumerate(rows, 1):
+            key = row["chunk_id"]
+            if key in seen:
+                continue
+            seen.add(key)
+            item = merged.setdefault(
+                key,
+                {
+                    "source": row["path"],
+                    "section": row["section"],
+                    "content": row["text"],
+                    "score": 0.0,
+                    "semantic_similarity": None,
+                    "matched_by": [],
+                },
+            )
+            item["matched_by"].append(method)
+            if method == "semantic":
+                item["semantic_similarity"] = 1 - row["_distance"]
+            item["score"] += (
+                (0.8 if method == "semantic" else 0.2) / (1 + rank)
+                if mode == "hybrid"
+                else (1 - row["_distance"] if method == "semantic" else row["_score"])
+            )
+    return sorted(merged.values(), key=lambda item: -item["score"])[:limit]
 
 
 def format_results(rows: list[dict]) -> str:
-    """Format search results with their sources and similarity scores."""
+    """Format semantic results as text."""
     return "\n\n---\n\n".join(
-        f"Źródło: {row['path']}\n"
+        f"Źródło: {row['source']}\n"
         f"{f'Sekcja: {row["section"]}\n' if row.get('section') else ''}"
-        f"Podobieństwo: {1 - row['_distance']:.4f}\n{row['text']}"
+        f"Podobieństwo: {row['score']:.4f}\n{row['content']}"
         for row in rows
     )
 

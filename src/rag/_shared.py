@@ -5,7 +5,7 @@ from functools import lru_cache
 MODEL = "intfloat/multilingual-e5-large"
 TABLE = "knowledge"
 BATCH_SIZE = 64
-INDEX_VERSION = f"{MODEL}:markdown-tokens-v2"
+INDEX_VERSION = f"{MODEL}:markdown-tokens-v3-fts"
 
 
 @lru_cache(maxsize=1)

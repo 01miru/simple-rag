@@ -136,6 +136,7 @@ def index(root: Path) -> int:
         ValueError: If the knowledge directory is missing or data is invalid.
     """
     import lancedb
+    from lancedb.index import FTS
 
     source = root / "knowledge"
     if not source.is_dir():
@@ -159,6 +160,7 @@ def index(root: Path) -> int:
         manifest = {"version": INDEX_VERSION, "files": {}}
 
     files = manifest["files"]
+    changed = manifest.get("fts_dirty", False)
 
     def save_manifest() -> None:
         temporary = manifest_path.with_suffix(".tmp")
@@ -175,6 +177,8 @@ def index(root: Path) -> int:
     }
 
     for relative_path in files.keys() - markdown_files.keys():
+        changed = True
+        manifest["fts_dirty"] = True
         files[relative_path] = None
         save_manifest()
         delete_chunks(relative_path)
@@ -189,6 +193,9 @@ def index(root: Path) -> int:
         if files.get(relative_path) == digest:
             continue
 
+        changed = True
+        manifest["fts_dirty"] = True
+
         text = data.decode("utf-8")
         files[relative_path] = None
         save_manifest()
@@ -200,6 +207,7 @@ def index(root: Path) -> int:
             continue
         encoder = _shared.model()
         fragments = iter(chunks(text, encoder.tokenizer, encoder.max_seq_length))
+        chunk_number = 0
         while batch := list(islice(fragments, BATCH_SIZE)):
             vectors = encoder.encode(
                 [
@@ -217,10 +225,13 @@ def index(root: Path) -> int:
                 {
                     "path": relative_path,
                     **fragment,
+                    "chunk_id": f"{relative_path}:{chunk_number + i}",
+                    "fts_text": f"{fragment['section']}\n{fragment['text']}",
                     "vector": vector.tolist(),
                 }
-                for fragment, vector in zip(batch, vectors, strict=True)
+                for i, (fragment, vector) in enumerate(zip(batch, vectors, strict=True))
             ]
+            chunk_number += len(batch)
             if exists:
                 db.open_table(TABLE).add(records)
             else:
@@ -231,4 +242,11 @@ def index(root: Path) -> int:
         files[relative_path] = digest
         save_manifest()
 
+    if changed and exists:
+        db.open_table(TABLE).create_index(
+            "fts_text", config=FTS(stem=False, remove_stop_words=False), replace=True
+        )
+    if changed:
+        manifest.pop("fts_dirty", None)
+        save_manifest()
     return indexed_chunks

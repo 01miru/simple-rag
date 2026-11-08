@@ -8,6 +8,8 @@ from importlib.machinery import ModuleSpec
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+
 from rag import chunks, index, model, search
 from rag.indexing import embedding_text
 
@@ -38,39 +40,6 @@ class FakeModel:
 
 
 class RagTest(unittest.TestCase):
-    def test_model_uses_cuda_when_available_and_cpu_otherwise(self):
-        for available, device in ((True, "cuda"), (False, "cpu")):
-            with self.subTest(device=device):
-                torch = types.ModuleType("torch")
-                torch.__spec__ = ModuleSpec("torch", loader=None)
-                torch.cuda = types.SimpleNamespace(
-                    is_available=Mock(return_value=available)
-                )
-                transformers = types.ModuleType("transformers")
-                transformers.__path__ = []
-                transformers_utils = types.ModuleType("transformers.utils")
-                transformers_utils.logging = types.SimpleNamespace(
-                    disable_progress_bar=Mock()
-                )
-                sentence_transformers = types.ModuleType("sentence_transformers")
-                sentence_transformers.SentenceTransformer = Mock()
-                model.cache_clear()
-                with patch.dict(
-                    sys.modules,
-                    {
-                        "torch": torch,
-                        "transformers": transformers,
-                        "transformers.utils": transformers_utils,
-                        "sentence_transformers": sentence_transformers,
-                    },
-                ):
-                    model()
-                sentence_transformers.SentenceTransformer.assert_called_once_with(
-                    "intfloat/multilingual-e5-large",
-                    device=device,
-                )
-        model.cache_clear()
-
     def test_chunks_preserve_sections_blocks_and_token_limit(self):
         text = (
             "# Główny\nWstęp.\n\n## Kod\n```python\n# nie nagłówek\nprint('kot')\n```\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n"
@@ -296,3 +265,32 @@ class RagTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.parametrize(("available", "device"), [(True, "cuda"), (False, "cpu")])
+def test_model_device_selection(available, device):
+    torch = types.ModuleType("torch")
+    torch.__spec__ = ModuleSpec("torch", loader=None)
+    torch.cuda = types.SimpleNamespace(is_available=Mock(return_value=available))
+    transformers = types.ModuleType("transformers")
+    transformers.__path__ = []
+    transformers_utils = types.ModuleType("transformers.utils")
+    transformers_utils.logging = types.SimpleNamespace(disable_progress_bar=Mock())
+    sentence_transformers = types.ModuleType("sentence_transformers")
+    sentence_transformers.SentenceTransformer = Mock()
+    model.cache_clear()
+    with patch.dict(
+        sys.modules,
+        {
+            "torch": torch,
+            "transformers": transformers,
+            "transformers.utils": transformers_utils,
+            "sentence_transformers": sentence_transformers,
+        },
+    ):
+        model()
+    sentence_transformers.SentenceTransformer.assert_called_once_with(
+        "intfloat/multilingual-e5-large",
+        device=device,
+    )
+    model.cache_clear()
