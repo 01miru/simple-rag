@@ -94,3 +94,14 @@ Szybkie testy sprawdzają też podział długiego fikcyjnego dokumentu Markdown,
 Plik `.mcp.json` w katalogu głównym projektu zawiera konfigurację serwera MCP. Po otwarciu katalogu projektu w VS Code sesja Copilot może automatycznie korzystać z tej konfiguracji. Najpierw zainstaluj zależności i utwórz indeks zgodnie z instrukcją powyżej. Polecenie `uv` musi być dostępne w środowisku VS Code.
 
 Do indeksu i modelu nie potrzebujesz klucza API. Więcej informacji o konfiguracji serwerów znajdziesz w [dokumentacji VS Code](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).
+
+## Agent lokalnej wiedzy
+
+W pliku [knowledge-agent/instructions.md](knowledge-agent/instructions.md) znajdziesz instrukcje dla asystenta, który wyszukuje informacje w lokalnych dokumentach, sprawdza ich kontekst i podaje źródła. Możesz użyć ich w różnych aplikacjach. Sam plik nie uruchamia serwera MCP: najpierw zainstaluj zależności, zaindeksuj dokumenty i skonfiguruj serwer `lokalna-wiedza` w wybranej aplikacji.
+
+- VS Code i GitHub Copilot: skopiuj plik do `.github/agents/lokalna-wiedza.agent.md` w katalogu projektu. Następnie wybierz agenta w czacie i zadaj pytanie. Więcej o formacie i lokalizacji plików znajdziesz w [dokumentacji agentów VS Code](https://code.visualstudio.com/docs/agents/reference/custom-agent-file-reference).
+- Claude Code: skonfiguruj serwer MCP, a następnie utwórz agenta poleceniem `/agents` i umieść treść pliku w jego instrukcjach. Więcej informacji znajdziesz w [dokumentacji subagentów](https://code.claude.com/docs/en/sub-agents).
+- Codex: skonfiguruj serwer MCP, a następnie poproś w rozmowie: „Przeczytaj `knowledge-agent/instructions.md` i odpowiedz zgodnie z tymi instrukcjami na pytanie: …”. Możesz też dodać wybrane instrukcje do istniejącego `AGENTS.md`. Będą wtedy instrukcjami projektu, a nie osobnym agentem. Zobacz [instrukcje AGENTS.md](https://developers.openai.com/codex/guides/agents-md/).
+- Inny klient MCP: jeśli aplikacja na to pozwala, wklej treść pliku jako instrukcję systemową lub instrukcję własnego agenta. Możesz też wkleić ją na początku rozmowy.
+
+Nie każda aplikacja korzysta automatycznie z projektowego pliku `.mcp.json`. Jeśli klient uruchamia serwer z innego katalogu roboczego, zastąp w jego konfiguracji oba wystąpienia `.` po `--project` i `--directory` bezwzględną ścieżką do tego projektu. Sprawdź też, czy aplikacja ma dostęp do `uv`.
