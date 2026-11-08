@@ -2,7 +2,7 @@
 
 [![Testy](https://github.com/01miru/simple-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/01miru/simple-rag/actions/workflows/tests.yml)
 
-Projekt wyszukuje informacje w polskich i wielojęzycznych plikach Markdown. Indeks i embeddingi powstają lokalnie. Serwer MCP udostępnia dokumenty Codexowi i innym klientom obsługującym MCP.
+Projekt wyszukuje informacje w polskich i wielojęzycznych plikach Markdown. Indeks i embeddingi powstają lokalnie. Serwer MCP udostępnia dokumenty klientom obsługującym MCP.
 
 Polecenia `rag index` i `rag serve` uruchomisz w terminalu. Indeksowanie wymaga katalogu `knowledge/`. Serwer udostępnia trzy narzędzia: `search_knowledge` wyszukuje fragmenty, `list_documents` pokazuje zaindeksowane pliki, a `get_document` pobiera wskazany zakres linii. Każde źródło ma ścieżkę względem katalogu projektu. Podobieństwo cosinusowe mieści się w zakresie od -1 do 1. Im wyższa wartość, tym bardziej fragment przypomina zapytanie. Konfigurację klienta MCP opisuje dokumentacja danej aplikacji.
 
@@ -75,7 +75,7 @@ get_document(path, start_line=1, max_lines=200)
 
 Odczytuje plik `.md` z katalogu `knowledge/`, o ile plik znajduje się w indeksie i nie zmienił się od ostatniego indeksowania. Numeracja linii zaczyna się od 1, a `max_lines` może wynosić od 1 do 500. Odpowiedź podaje ścieżkę, zakres i łączną liczbę linii, treść oraz `has_more`. Po zmianie pliku narzędzie poprosi o ponowne uruchomienie `rag index`.
 
-Możesz poprosić Codexa: „Znajdź dokumenty o zasadach zwrotów”, „Porównaj dwie polityki i wskaż różnice” albo „Podaj wnioski z tych dokumentów wraz ze źródłami”. Wyszukiwanie semantyczne wybiera fragmenty podobne do zapytania i może pominąć część bazy. Przy porównaniu dokumentów sprawdź wymagane źródła przez `list_documents` i `get_document`.
+Możesz poprosić asystenta: „Znajdź dokumenty o zasadach zwrotów”, „Porównaj dwie polityki i wskaż różnice” albo „Podaj wnioski z tych dokumentów wraz ze źródłami”. Wyszukiwanie semantyczne wybiera fragmenty podobne do zapytania i może pominąć część bazy. Przy porównaniu dokumentów sprawdź wymagane źródła przez `list_documents` i `get_document`.
 
 ## Testy jakości wyszukiwania
 
@@ -89,14 +89,8 @@ Test wymaga, by właściwy dokument znalazł się w pierwszej trójce dla co naj
 
 Szybkie testy sprawdzają też podział długiego fikcyjnego dokumentu Markdown, w tym limit tokenów, treść i nagłówki. Opcjonalny test jakości indeksuje ten dokument osobno i sprawdza, czy odpowiednie fragmenty z początku, środka i końca pojawiają się w pierwszej trójce wyników. Nie ocenia odpowiedzi generowanych przez LLM.
 
-## Podłączenie do Codexa
+## Korzystanie w VS Code
 
-Podłącz Codexa do serwera MCP:
+Plik `.mcp.json` w katalogu głównym projektu zawiera konfigurację serwera MCP. Po otwarciu katalogu projektu w VS Code sesja Copilot może automatycznie korzystać z tej konfiguracji. Najpierw zainstaluj zależności i utwórz indeks zgodnie z instrukcją powyżej. Polecenie `uv` musi być dostępne w środowisku VS Code.
 
-```sh
-codex mcp add lokalna-wiedza -- /ABSOLUTNA/SCIEZKA/DO/rag/.venv/bin/rag serve --directory /ABSOLUTNA/SCIEZKA/DO/rag
-```
-
-Zastąp przykładowe ścieżki w poleceniu bezwzględną ścieżką do projektu. Konfigurację sprawdzisz poleceniem `codex mcp list`; potem uruchom ponownie sesję Codexa. Możesz zapytać na przykład: „Wyszukaj w lokalnej wiedzy informacje o … i podaj źródła”. Więcej informacji znajdziesz w [dokumentacji OpenAI](https://developers.openai.com/codex/mcp/).
-
-Do indeksu i modelu nie potrzebujesz klucza API. Korzystanie z Codexa podlega ustawieniom wybranej usługi Codex.
+Do indeksu i modelu nie potrzebujesz klucza API. Więcej informacji o konfiguracji serwerów znajdziesz w [dokumentacji VS Code](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).

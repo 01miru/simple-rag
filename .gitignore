@@ -1,5 +1,6 @@
 # Python-generated files
 .idea/
+.vscode/
 __pycache__/
 *.py[oc]
 build/
@@ -19,3 +20,6 @@ wheels/
 # Lokalne dokumenty wiedzy
 knowledge/*
 !knowledge/.gitkeep
+
+#Other files
+*.log

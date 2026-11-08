@@ -1,0 +1,16 @@
+{
+	"mcpServers": {
+		"lokalna-wiedza": {
+			"command": "uv",
+			"args": [
+				"run",
+				"--project",
+				".",
+				"rag",
+				"serve",
+				"--directory",
+				"."
+			]
+		}
+	}
+}
