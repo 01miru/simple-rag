@@ -23,3 +23,6 @@ knowledge/*
 
 #Other files
 *.log
+.aws/
+.codex/
+.agents/
