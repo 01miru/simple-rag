@@ -10,19 +10,15 @@ from ._shared import TABLE
 
 
 def search(
-    root: Path, query: str, limit: int = 5, path_prefix: str | None = None
-) -> str:
-    """Search the index and return formatted matching fragments."""
-    return _search(root, query, limit, path_prefix)
-
-
-def _search(
-    root: Path, query: str, limit: int, path_prefix: str | None, *, mcp: bool = False
-) -> str:
-    result = search_results(root, query, limit, path_prefix, mcp=mcp, mode="semantic")
-    if isinstance(result, str):
-        return result
-    return format_results(result) or "Brak wyników."
+    root: Path,
+    query: str,
+    limit: int = 5,
+    path_prefix: str | None = None,
+    mode: str = "hybrid",
+) -> dict:
+    """Search the index and return structured results or an error."""
+    result = search_results(root, query, limit, path_prefix, mode=mode)
+    return {"error": result} if isinstance(result, str) else {"results": result}
 
 
 def search_results(
@@ -31,13 +27,14 @@ def search_results(
     limit: int = 5,
     path_prefix: str | None = None,
     *,
-    mcp: bool = False,
     mode: str = "hybrid",
 ) -> list[dict] | str:
     """Search with semantic and/or full-text ranking."""
     import lancedb
     from lancedb.query import LanceVectorQueryBuilder
 
+    if not 1 <= limit <= 50:
+        raise ValueError("limit musi być z zakresu 1..50.")
     if mode not in ("hybrid", "semantic", "keyword"):
         raise ValueError("mode musi być jednym z: hybrid, semantic, keyword.")
 
@@ -50,11 +47,9 @@ def search_results(
 
     db = lancedb.connect(str(db_path))
     if TABLE not in db.list_tables():
-        if mcp:
-            return "Brak indeksu. Uruchom `rag index`."
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
     table = db.open_table(TABLE)
-    if not mcp and table.count_rows() == 0:
+    if table.count_rows() == 0:
         return "Brak dokumentów w indeksie. Dodaj pliki .md i uruchom `rag index`."
 
     try:
@@ -124,16 +119,6 @@ def search_results(
                 else (1 - row["_distance"] if method == "semantic" else row["_score"])
             )
     return sorted(merged.values(), key=lambda item: -item["score"])[:limit]
-
-
-def format_results(rows: list[dict]) -> str:
-    """Format semantic results as text."""
-    return "\n\n---\n\n".join(
-        f"Źródło: {row['source']}\n"
-        f"{f'Sekcja: {row["section"]}\n' if row.get('section') else ''}"
-        f"Podobieństwo: {row['score']:.4f}\n{row['content']}"
-        for row in rows
-    )
 
 
 def _indexed(root: Path) -> list[str]:

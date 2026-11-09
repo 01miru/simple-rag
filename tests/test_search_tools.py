@@ -93,12 +93,14 @@ class SearchToolTest(unittest.TestCase):
         self.assertIn(
             "Brak wyników", self.text(self.call(path_prefix="knowledge/missing"))
         )
-        direct = search(self.root, "target", 1, "knowledge/project/")
+        direct = self.text(search(self.root, "target", 1, "knowledge/project/"))
         self.assertIn("knowledge/project/", direct)
         self.assertNotIn("project-neighbor", direct)
         self.assertIn(
             "knowledge/percent%_name.md",
-            search(self.root, "target", path_prefix="knowledge/percent%_name.md"),
+            self.text(
+                search(self.root, "target", path_prefix="knowledge/percent%_name.md")
+            ),
         )
 
     def test_modes_and_reindex(self):
@@ -118,11 +120,11 @@ class SearchToolTest(unittest.TestCase):
 
         db = lancedb.connect(str(self.root / ".rag" / "lancedb"))
         db.open_table("knowledge").delete("path IS NOT NULL")
-        self.assertIn("Brak dokumentów", search(self.root, "target"))
-        self.assertEqual("Brak wyników.", self.text(self.call()))
+        self.assertIn("Brak dokumentów", self.text(search(self.root, "target")))
+        self.assertIn("Brak dokumentów", self.text(self.call()))
         db.drop_table("knowledge")
-        self.assertIn("Brak dokumentów", search(self.root, "target"))
-        self.assertIn("Brak indeksu", self.text(self.call()))
+        self.assertIn("Brak dokumentów", self.text(search(self.root, "target")))
+        self.assertIn("Brak dokumentów", self.text(self.call()))
 
     def test_empty_query_and_missing_index_do_not_load_model(self):
         with patch("rag._shared.model", side_effect=AssertionError("model loaded")):
@@ -166,3 +168,11 @@ def test_search_mode_with_prefix(search_tool_case, mode):
     assert ("keyword" if mode == "hybrid" else mode) in result["results"][0][
         "matched_by"
     ]
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "semantic", "keyword"])
+def test_python_and_mcp_agree(search_tool_case, mode):
+    args = {"limit": 2, "path_prefix": "knowledge/project/", "mode": mode}
+    assert search(search_tool_case.root, "target", **args) == search_tool_case.call(
+        **args
+    )

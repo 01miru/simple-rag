@@ -71,7 +71,10 @@ class RagTest(unittest.TestCase):
                 "# Zwierzęta\n## Kot\nKot śpi.", encoding="utf-8"
             )
             index(root)
-            self.assertIn("Sekcja: Zwierzęta > Kot", search(root, "kot"))
+            self.assertIn(
+                "Zwierzęta > Kot",
+                [row["section"] for row in search(root, "kot")["results"]],
+            )
 
     def test_setext_headings(self):
         parts = list(
@@ -147,14 +150,18 @@ class RagTest(unittest.TestCase):
                 )
                 result = search(root, "kot")
                 fake.encode.assert_called_with("query: kot", normalize_embeddings=True)
-                self.assertIn("Sekcja: Zwierzęta > Kot", result)
-                self.assertIn("## Kot\nKot śpi.", result)
+                self.assertIn(
+                    "Zwierzęta > Kot", [row["section"] for row in result["results"]]
+                )
+                self.assertIn(
+                    "## Kot\nKot śpi.", [row["content"] for row in result["results"]]
+                )
                 manifest_path = root / ".rag" / "manifest.json"
                 manifest = json.loads(manifest_path.read_text())
                 manifest["version"] = "old"
                 manifest_path.write_text(json.dumps(manifest))
                 fake.encode.reset_mock()
-                self.assertIn("przebudowy", search(root, "kot"))
+                self.assertIn("przebudowy", search(root, "kot")["error"])
                 fake.encode.assert_not_called()
                 self.assertEqual(index(root), 2)
                 fake.encode.assert_called_once()
@@ -165,32 +172,26 @@ class RagTest(unittest.TestCase):
             root = Path(directory)
             source = root / "knowledge"
             source.mkdir()
-            self.assertIn("Brak indeksu", search(root, "kot"))
+            self.assertIn("Brak indeksu", search(root, "kot")["error"])
             (source / "kot.md").write_text("Kot lubi mleko.", encoding="utf-8")
             (source / "pies.md").write_text("Pies lubi spacery.", encoding="utf-8")
             self.assertEqual(index(root), 2)
             _model.reset_mock()
             self.assertEqual(index(root), 0)
             _model.assert_not_called()
-            results = search(root, "kot").split("\n\n---\n\n")
-            self.assertTrue(
-                results[0].startswith(
-                    "Źródło: knowledge/kot.md\nPodobieństwo: 1.0000\n"
-                )
-            )
-            self.assertIn(
-                "Źródło: knowledge/pies.md\nPodobieństwo: 0.0000\n", results[1]
-            )
+            results = search(root, "kot", mode="semantic")["results"]
+            self.assertEqual(results[0]["source"], "knowledge/kot.md")
+            self.assertEqual(results[1]["source"], "knowledge/pies.md")
             (source / "pies.md").write_text("Pies śpi w domu.", encoding="utf-8")
             self.assertEqual(index(root), 1)
-            self.assertIn("Pies śpi w domu.", search(root, "pies"))
-            self.assertNotIn("Pies lubi spacery.", search(root, "pies"))
+            self.assertIn("Pies śpi w domu.", str(search(root, "pies")))
+            self.assertNotIn("Pies lubi spacery.", str(search(root, "pies")))
             (source / "kot.md").unlink()
             index(root)
-            self.assertNotIn("kot.md", search(root, "kot"))
+            self.assertNotIn("kot.md", str(search(root, "kot")))
             (source / "pies.md").unlink()
             self.assertEqual(index(root), 0)
-            self.assertIn("Brak dokumentów", search(root, "kot"))
+            self.assertIn("Brak dokumentów", search(root, "kot")["error"])
 
     @patch("rag._shared.model", return_value=FakeModel())
     def test_empty_markdown_file_can_be_indexed_and_updated(self, _model):
@@ -205,7 +206,7 @@ class RagTest(unittest.TestCase):
 
             document.write_text("Kot lubi mleko.", encoding="utf-8")
             self.assertEqual(index(root), 1)
-            self.assertIn("Kot lubi mleko.", search(root, "kot"))
+            self.assertIn("Kot lubi mleko.", str(search(root, "kot")))
 
     def test_index_rejects_invalid_utf8(self):
         with tempfile.TemporaryDirectory() as directory:

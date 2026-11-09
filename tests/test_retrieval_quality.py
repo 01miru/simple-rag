@@ -44,8 +44,8 @@ def long_document_index(tmp_path_factory):
     ],
 )
 def test_long_document_fragments(long_document_index, query, expected):
-    results = search(long_document_index, query, limit=3).split("\n\n---\n\n")
-    assert any(expected in result for result in results), query
+    results = search(long_document_index, query, limit=3, mode="semantic")["results"]
+    assert any(expected in result["content"] for result in results), query
 
 
 @pytest.fixture(scope="module")
@@ -122,11 +122,11 @@ def sample_documents_index(tmp_path_factory):
 def test_retrieval_quality(sample_documents_index, queries, limit, min_recall, min_mrr):
     ranks = []
     for query, expected in queries:
-        results = search(sample_documents_index, query, limit=limit).split(
-            "\n\n---\n\n"
-        )
-        paths = [result.splitlines()[0] for result in results]
-        target = f"Źródło: knowledge/{expected}"
+        results = search(sample_documents_index, query, limit=limit, mode="semantic")[
+            "results"
+        ]
+        paths = [result["source"] for result in results]
+        target = f"knowledge/{expected}"
         ranks.append(paths.index(target) + 1 if target in paths else 0)
 
     recall = sum(rank > 0 for rank in ranks) / len(ranks)
