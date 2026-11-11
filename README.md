@@ -4,7 +4,7 @@
 
 Projekt wyszukuje informacje w polskich i wielojęzycznych plikach Markdown. Indeks i embeddingi powstają lokalnie. Serwer MCP udostępnia dokumenty klientom obsługującym MCP.
 
-Polecenia `rag index` i `rag serve` uruchomisz w terminalu. Indeksowanie wymaga katalogu `knowledge/`. Serwer udostępnia trzy narzędzia: `search_knowledge` wyszukuje fragmenty, `list_documents` pokazuje zaindeksowane pliki, a `get_document` pobiera wskazany zakres linii. Każde źródło ma ścieżkę względem katalogu projektu. Podobieństwo cosinusowe mieści się w zakresie od -1 do 1. Im wyższa wartość, tym bardziej fragment przypomina zapytanie. Konfigurację klienta MCP opisuje dokumentacja danej aplikacji.
+Polecenia `rag index` i `rag serve` uruchomisz w terminalu. Indeksowanie wymaga katalogu `knowledge/`. Serwer udostępnia trzy narzędzia: `search_knowledge` wyszukuje fragmenty, `list_documents` pokazuje zaindeksowane pliki, a `get_document` pobiera wskazany zakres linii. Każde źródło ma ścieżkę względem katalogu projektu. Konfigurację klienta MCP opisuje dokumentacja danej aplikacji.
 
 ## Jak to działa
 
@@ -16,9 +16,14 @@ flowchart LR
     E[Aplikacja obsługująca MCP] -->|wyszukiwanie, lista lub odczyt| F[Serwer MCP]
     F --> G[Embedding zapytania]
     G --> D
-    D -->|najbardziej podobne fragmenty i ścieżki| F
+    F -->|wyszukiwanie pełnotekstowe BM25| D
+    D -->|rankingi fragmentów| F
     F --> E
 ```
+
+Domyślne wyszukiwanie hybrydowe łączy ranking semantyczny z rankingiem pełnotekstowym BM25 za pomocą ważonego Reciprocal Rank Fusion (RRF). Dla każdego fragmentu sumuje `0,8 / (1 + pozycja)` w rankingu semantycznym i `0,2 / (1 + pozycja)` w rankingu BM25. Pozycje liczone są od 1. Jeśli fragment nie trafił do jednego z rankingów, wynik z tego rankingu nie jest doliczany. Wagi i stała RRF są zapisane w kodzie; nie można ich zmienić przez narzędzie MCP ani CLI.
+
+BM25 może pomóc znaleźć występujące w dokumentach nazwy własne, kody i słowa z dokładnych fraz, które wyszukiwanie semantyczne mogłoby pominąć. Hybryda nie gwarantuje jednak lepszych wyników dla każdego zapytania ani dokładnego dopasowania całej frazy. Warto sprawdzić jej jakość na własnych dokumentach i pytaniach.
 
 ## Pakiety i baza wektorowa
 
@@ -56,8 +61,9 @@ search_knowledge(query, limit=5, path_prefix=null, mode="hybrid")
 - `query` — niepuste pytanie lub fraza.
 - `limit` — liczba fragmentów, od 1 do 50; domyślnie 5.
 - `path_prefix` — opcjonalna ścieżka względna względem katalogu projektu. Pełna ścieżka pliku dopasowuje ten plik, a ścieżka katalogu dopasowuje jego zawartość z granicą segmentu. Na przykład `knowledge/projekt/` nie obejmuje `knowledge/projekt-inny/`.
+- `mode` — `hybrid` (domyślny), `semantic` lub `keyword`.
 
-Wynik to JSON z listą `results`. Każdy fragment ma pola `source`, `section`, `content`, `score`, `semantic_similarity` i `matched_by`. Domyślny tryb `hybrid` zwraca wynik RRF, `semantic` używa podobieństwa cosinusowego, a `keyword` używa BM25. Wyniki mają różne skale w zależności od trybu. W razie błędu odpowiedź zawiera pole `error`. Po aktualizacji uruchom `rag index`, aby przebudować indeks. Przykład: `search_knowledge("zasady zwrotu kosztów", limit=8, path_prefix="knowledge/podróże/")`.
+Wynik to JSON z listą `results`. Każdy fragment ma pola `source`, `section`, `content`, `score`, `semantic_similarity` i `matched_by`. Tryb `hybrid` zwraca wynik RRF, `semantic` używa podobieństwa cosinusowego, a `keyword` używa BM25. Podobieństwo cosinusowe mieści się w zakresie od -1 do 1; im wyższa wartość, tym bardziej fragment przypomina zapytanie. Pole `semantic_similarity` ma wartość `null`, gdy fragment nie występuje w rankingu semantycznym. Wyniki mają różne skale w zależności od trybu. W razie błędu odpowiedź zawiera pole `error`. Po aktualizacji uruchom `rag index`, aby przebudować indeks. Przykład: `search_knowledge("zasady zwrotu kosztów", limit=8, path_prefix="knowledge/podróże/")`.
 
 ### `list_documents`
 
