@@ -28,7 +28,10 @@ def embedding_text(text: str, section: str, tokenizer, limit: int) -> str:
 
 
 def chunks(text: str, tokenizer, limit: int):
-    """Split Markdown into sections and blocks within the model's token limit."""
+    """Split Markdown into sections and blocks within the model's token limit.
+
+    Every fragment carries the 1-based line range it was taken from.
+    """
 
     def fits(value: str) -> bool:
         return (
@@ -46,21 +49,35 @@ def chunks(text: str, tokenizer, limit: int):
     headings: list[tuple[int, str]] = []
     section = ""
     fragment = ""
+    first = last = 0
     block: list[str] = []
+    block_line = 0
     fence = None
 
-    def add_block(value):
+    def flush():
         nonlocal fragment
+        if fragment:
+            yield {
+                "text": fragment,
+                "section": section,
+                "start_line": first,
+                "end_line": last,
+            }
+            fragment = ""
+
+    def add_block(value, line):
+        nonlocal fragment, first, last
         value = value.strip()
         if not value:
             return
+        end = line + value.count("\n")
         combined = f"{fragment}\n\n{value}" if fragment else value
         if fits(combined):
-            fragment = combined
+            if not fragment:
+                first = line
+            fragment, last = combined, end
             return
-        if fragment:
-            yield {"text": fragment, "section": section}
-            fragment = ""
+        yield from flush()
         while value and not fits(value):
             # Oversized blocks must be split; find the longest prefix that fits.
             low, high = 1, len(value)
@@ -70,11 +87,21 @@ def chunks(text: str, tokenizer, limit: int):
                     low = mid
                 else:
                     high = mid - 1
-            if not fits(value[:low]):
+            piece = value[:low]
+            if not fits(piece):
                 raise ValueError("Limit tokenów jest zbyt mały dla tekstu.")
-            yield {"text": value[:low], "section": section}
+            # A cut may land on a line break; report only lines that hold content.
+            start = line + piece[: len(piece) - len(piece.lstrip())].count("\n")
+            yield {
+                "text": piece,
+                "section": section,
+                "start_line": start,
+                "end_line": max(start, line + piece.rstrip().count("\n")),
+            }
+            line += piece.count("\n")
             value = value[low:]
-        fragment = value
+        first = line + value[: len(value) - len(value.lstrip())].count("\n")
+        fragment, last = value, end
 
     lines = text.splitlines()
     for i, line in enumerate(lines):
@@ -88,11 +115,9 @@ def chunks(text: str, tokenizer, limit: int):
             else None
         )
         if heading or underline:
-            yield from add_block("\n".join(block))
+            yield from add_block("\n".join(block), block_line)
             block = []
-            if fragment:
-                yield {"text": fragment, "section": section}
-                fragment = ""
+            yield from flush()
             if heading:
                 level = len(heading.group(1))
             else:
@@ -117,13 +142,14 @@ def chunks(text: str, tokenizer, limit: int):
             ):
                 fence = None
         if not line.strip() and not fence:
-            yield from add_block("\n".join(block))
+            yield from add_block("\n".join(block), block_line)
             block = []
         else:
+            if not block:
+                block_line = i + 1
             block.append(line)
-    yield from add_block("\n".join(block))
-    if fragment:
-        yield {"text": fragment, "section": section}
+    yield from add_block("\n".join(block), block_line)
+    yield from flush()
 
 
 def index(root: Path) -> int:

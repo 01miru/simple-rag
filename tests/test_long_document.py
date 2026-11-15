@@ -25,6 +25,19 @@ def test_long_document_chunks_preserve_content_and_sections():
     assert any("# To jest komentarz, nie nagłówek" in p["text"] for p in parts)
 
 
+@pytest.mark.parametrize("limit", [80, 20])
+def test_long_document_chunks_report_their_source_lines(limit):
+    text = DOCUMENT.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    previous = 0
+    for part in chunks(text, TOKENIZER, limit):
+        body = part["text"].strip().splitlines()
+        assert previous <= part["start_line"] <= part["end_line"] <= len(lines)
+        assert body[0].strip() in lines[part["start_line"] - 1]
+        assert body[-1].strip() in lines[part["end_line"] - 1]
+        previous = part["end_line"]
+
+
 @pytest.mark.parametrize(
     ("phrase", "section"),
     [

@@ -14,65 +14,90 @@ def evaluate(root: Path, cases: list[dict]) -> dict:
     """Return aggregate metrics by category and mode."""
     if not cases:
         raise ValueError("Zestaw pytań jest pusty.")
-    grouped: dict[str, dict[str, list[tuple[int, float]]]] = defaultdict(
+    grouped: dict[str, dict[str, list[tuple[list[int], int, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    expected: list[set[str]] = []
     for case in cases:
-        if not all(
-            isinstance(case.get(key), str) and case[key].strip()
-            for key in ("query", "source", "category")
+        sources = [case["source"]] if "source" in case else case.get("sources")
+        if (
+            ("source" in case and "sources" in case)
+            or not isinstance(sources, list)
+            or not sources
+            or not all(
+                isinstance(value, str) and value.strip()
+                for value in (case.get("query"), case.get("category"), *sources)
+            )
         ):
             raise ValueError(
-                "Każdy przypadek wymaga niepustych pól query, source i category."
+                "Każdy przypadek wymaga niepustych pól query i category oraz "
+                "jednego z pól source lub sources."
             )
         if "content_contains" in case and (
             not isinstance(case["content_contains"], str)
             or not case["content_contains"]
+            or len(sources) != 1
         ):
-            raise ValueError("content_contains musi być niepustym tekstem.")
+            raise ValueError(
+                "content_contains musi być niepustym tekstem i wymaga jednego źródła."
+            )
+        expected.append(set(sources))
     # Warm up the model and database before measuring; omit warm-up from metrics.
-    warmup = search_results(root, cases[0]["query"], limit=5, mode="semantic")
+    warmup = search_results(root, cases[0]["query"], mode="semantic")
     if isinstance(warmup, str):
         raise RuntimeError(warmup)  # noqa: TRY004
-    for case in cases:
+    for case, wanted in zip(cases, expected, strict=True):
         for mode in ("semantic", "hybrid", "keyword"):
             start = time.perf_counter()
-            results = search_results(root, case["query"], limit=5, mode=mode)
+            results = search_results(
+                root, case["query"], limit=10, mode=mode, fragments_per_document=5
+            )
             elapsed = (time.perf_counter() - start) * 1000
             if isinstance(results, str):
                 raise RuntimeError(results)  # noqa: TRY004
-            rank = next(
-                (
-                    i
-                    for i, row in enumerate(results, 1)
-                    if row["source"] == case["source"]
-                    and (
-                        "content_contains" not in case
-                        or case["content_contains"] in row["content"]
+            # Ranks of the returned documents that the case expects.
+            ranks = [
+                i
+                for i, row in enumerate(results, 1)
+                if row["source"] in wanted
+                and (
+                    "content_contains" not in case
+                    or any(
+                        case["content_contains"] in part["content"]
+                        for part in row["fragments"]
                     )
-                ),
-                0,
-            )
-            grouped[case["category"]][mode].append((rank, elapsed))
-            grouped["all"][mode].append((rank, elapsed))
+                )
+            ]
+            observation = (ranks, len(wanted), elapsed)
+            grouped[case["category"]][mode].append(observation)
+            grouped["all"][mode].append(observation)
     report: dict = {}
     for category, modes in grouped.items():
         report[category] = {}
         for mode, observations in modes.items():
             n = len(observations)
-            metrics = {
-                f"{metric}@{k}": sum(
-                    (1 if metric == "recall" else 1 / rank)
-                    for rank, _ in observations
-                    if 0 < rank <= k
+            metrics = {}
+            for k in (3, 5, 10):
+                # Recall is the share of expected documents found in the top k,
+                # MRR the reciprocal rank of the first of them.
+                metrics[f"recall@{k}"] = (
+                    sum(
+                        sum(rank <= k for rank in ranks) / min(wanted, k)
+                        for ranks, wanted, _ in observations
+                    )
+                    / n
                 )
-                / n
-                for k in (3, 5)
-                for metric in ("recall", "mrr")
-            }
+                metrics[f"mrr@{k}"] = (
+                    sum(
+                        1 / ranks[0]
+                        for ranks, _, _ in observations
+                        if ranks and ranks[0] <= k
+                    )
+                    / n
+                )
             metrics.update(
                 count=n,
-                median_ms=statistics.median(elapsed for _, elapsed in observations),
+                median_ms=statistics.median(elapsed for _, _, elapsed in observations),
             )
             report[category][mode] = metrics
     return report

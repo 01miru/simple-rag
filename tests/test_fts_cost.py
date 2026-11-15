@@ -137,6 +137,8 @@ def test_full_query_cost(tmp_path, capsys):
                 "path": f"knowledge/{i:05}.md",
                 "section": "",
                 "text": text,
+                "start_line": 1,
+                "end_line": 1,
                 "fts_text": text,
                 "chunk_id": str(i),
                 "vector": vectors[i % len(vectors)].tolist(),

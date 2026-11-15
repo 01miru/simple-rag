@@ -44,8 +44,10 @@ def long_document_index(tmp_path_factory):
     ],
 )
 def test_long_document_fragments(long_document_index, query, expected):
-    results = search(long_document_index, query, limit=3, mode="semantic")["results"]
-    assert any(expected in result["content"] for result in results), query
+    (document,) = search(
+        long_document_index, query, mode="semantic", fragments_per_document=3
+    )["results"]
+    assert any(expected in part["content"] for part in document["fragments"]), query
 
 
 @pytest.fixture(scope="module")
@@ -199,10 +201,18 @@ def test_independent_long_document_comparison(long_document_index):
     for mode in ("semantic", "hybrid"):
         ranks = []
         for query, expected in cases:
-            results = search_results(long_document_index, query, limit=5, mode=mode)
+            results = search_results(
+                long_document_index, query, mode=mode, fragments_per_document=5
+            )
             assert isinstance(results, list)
+            # The corpus is one document, so rank its fragments.
             rank = next(
-                (i for i, row in enumerate(results, 1) if expected in row["content"]), 0
+                (
+                    i
+                    for i, part in enumerate(results[0]["fragments"], 1)
+                    if expected in part["content"]
+                ),
+                0,
             )
             ranks.append(rank)
         metrics[mode] = {

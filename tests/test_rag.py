@@ -71,9 +71,14 @@ class RagTest(unittest.TestCase):
                 "# Zwierzęta\n## Kot\nKot śpi.", encoding="utf-8"
             )
             index(root)
-            self.assertIn(
-                "Zwierzęta > Kot",
-                [row["section"] for row in search(root, "kot")["results"]],
+            (document,) = search(root, "kot")["results"]
+            self.assertEqual(document["source"], "knowledge/note.md")
+            self.assertEqual(
+                [
+                    (part["section"], part["start_line"], part["end_line"])
+                    for part in document["fragments"]
+                ],
+                [("Zwierzęta > Kot", 2, 3), ("Zwierzęta", 1, 1)],
             )
 
     def test_setext_headings(self):
@@ -150,12 +155,9 @@ class RagTest(unittest.TestCase):
                 )
                 result = search(root, "kot")
                 fake.encode.assert_called_with("query: kot", normalize_embeddings=True)
-                self.assertIn(
-                    "Zwierzęta > Kot", [row["section"] for row in result["results"]]
-                )
-                self.assertIn(
-                    "## Kot\nKot śpi.", [row["content"] for row in result["results"]]
-                )
+                fragments = result["results"][0]["fragments"]
+                self.assertIn("Zwierzęta > Kot", [row["section"] for row in fragments])
+                self.assertIn("## Kot\nKot śpi.", [row["content"] for row in fragments])
                 manifest_path = root / ".rag" / "manifest.json"
                 manifest = json.loads(manifest_path.read_text())
                 manifest["version"] = "old"

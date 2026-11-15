@@ -8,6 +8,12 @@ from typing import cast
 from . import _shared
 from ._shared import TABLE
 
+# Weighted Reciprocal Rank Fusion of the semantic and keyword document rankings.
+WEIGHTS = {"semantic": 0.8, "keyword": 0.2}
+RRF_K = 1
+CANDIDATES = 50
+COLUMNS = ["path", "section", "text", "chunk_id", "start_line", "end_line"]
+
 
 def search(
     root: Path,
@@ -15,9 +21,17 @@ def search(
     limit: int = 5,
     path_prefix: str | None = None,
     mode: str = "hybrid",
+    fragments_per_document: int = 2,
 ) -> dict:
     """Search the index and return structured results or an error."""
-    result = search_results(root, query, limit, path_prefix, mode=mode)
+    result = search_results(
+        root,
+        query,
+        limit,
+        path_prefix,
+        mode=mode,
+        fragments_per_document=fragments_per_document,
+    )
     return {"error": result} if isinstance(result, str) else {"results": result}
 
 
@@ -28,13 +42,31 @@ def search_results(
     path_prefix: str | None = None,
     *,
     mode: str = "hybrid",
+    fragments_per_document: int = 2,
 ) -> list[dict] | str:
-    """Search with semantic and/or full-text ranking."""
+    """Rank documents and return each with its best-matching fragments.
+
+    Args:
+        root: Project directory containing the index.
+        query: Question or phrase to look for.
+        limit: Maximum number of documents to return.
+        path_prefix: Optional file or directory path to search within.
+        mode: Ranking method: hybrid, semantic, or keyword.
+        fragments_per_document: Maximum number of fragments per document.
+
+    Returns:
+        Documents ordered by relevance, or an error message.
+
+    Raises:
+        ValueError: If a numeric argument or the mode is out of range.
+    """
     import lancedb
-    from lancedb.query import LanceVectorQueryBuilder
+    from lancedb.query import LanceQueryBuilder, LanceVectorQueryBuilder
 
     if not 1 <= limit <= 50:
         raise ValueError("limit musi być z zakresu 1..50.")
+    if not 1 <= fragments_per_document <= 10:
+        raise ValueError("fragments_per_document musi być z zakresu 1..10.")
     if mode not in ("hybrid", "semantic", "keyword"):
         raise ValueError("mode musi być jednym z: hybrid, semantic, keyword.")
 
@@ -71,54 +103,90 @@ def search_results(
         escaped = literal.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         predicate = f"path = '{literal}' OR path LIKE '{escaped}/%' ESCAPE '\\'"
 
-    rankings = []
-    candidate_k = max(limit * 5, 30) if mode == "hybrid" else limit
+    vector = None
     if mode in ("hybrid", "semantic"):
         vector = (
             _shared.model()
             .encode(f"query: {query}", normalize_embeddings=True)
             .tolist()
         )
-        request = cast(LanceVectorQueryBuilder, table.search(vector)).distance_type(
-            "cosine"
-        )
-        if predicate:
-            request = request.where(predicate, prefilter=True)
-        rankings.append(("semantic", request.limit(candidate_k).to_list()))
-    if mode in ("hybrid", "keyword"):
-        fts_request = table.search(query, query_type="fts", fts_columns="fts_text")
-        if predicate:
-            fts_request = fts_request.where(predicate, prefilter=True)
-        rankings.append(("keyword", fts_request.limit(candidate_k).to_list()))
+    batch_size = max(limit * 10, CANDIDATES)
 
-    merged: dict[str, dict] = {}
-    for method, rows in rankings:
-        seen = set()
-        for rank, row in enumerate(rows, 1):
-            key = row["chunk_id"]
-            if key in seen:
-                continue
-            seen.add(key)
-            item = merged.setdefault(
-                key,
-                {
-                    "source": row["path"],
-                    "section": row["section"],
-                    "content": row["text"],
-                    "score": 0.0,
-                    "semantic_similarity": None,
-                    "matched_by": [],
-                },
-            )
-            item["matched_by"].append(method)
+    def ranking(method: str) -> list[dict]:
+        """Return fragments in relevance order, covering `limit` documents."""
+        score = "_distance" if method == "semantic" else "_score"
+        rows: list[dict] = []
+        paths: set[str] = set()
+        while True:
+            # A long document can fill a whole batch with its own fragments, so
+            # ask again without the documents already found until enough appear.
+            request: LanceQueryBuilder
             if method == "semantic":
-                item["semantic_similarity"] = 1 - row["_distance"]
-            item["score"] += (
-                (0.8 if method == "semantic" else 0.2) / (1 + rank)
-                if mode == "hybrid"
-                else (1 - row["_distance"] if method == "semantic" else row["_score"])
+                request = cast(
+                    LanceVectorQueryBuilder, table.search(vector)
+                ).distance_type("cosine")
+            else:
+                request = table.search(query, query_type="fts", fts_columns="fts_text")
+            quoted = ", ".join("'" + p.replace("'", "''") + "'" for p in sorted(paths))
+            conditions = [
+                f"({condition})"
+                for condition in (predicate, quoted and f"path NOT IN ({quoted})")
+                if condition
+            ]
+            if conditions:
+                request = request.where(" AND ".join(conditions), prefilter=True)
+            batch = request.select([*COLUMNS, score]).limit(batch_size).to_list()
+            rows += batch
+            paths.update(row["path"] for row in batch)
+            if len(paths) >= limit or len(batch) < batch_size:
+                return rows
+
+    documents: dict[str, dict] = {}
+    for method in ("semantic", "keyword"):
+        if mode not in ("hybrid", method):
+            continue
+        counts: dict[str, int] = {}
+        for row in ranking(method):
+            path = row["path"]
+            value = 1 - row["_distance"] if method == "semantic" else row["_score"]
+            document = documents.setdefault(
+                path, {"source": path, "score": 0.0, "matched_by": [], "fragments": {}}
             )
-    return sorted(merged.values(), key=lambda item: -item["score"])[:limit]
+            # Ranks count documents, and fragments within their own document.
+            rank = counts[path] = counts.get(path, 0) + 1
+            if rank == 1:
+                document["matched_by"].append(method)
+                document["score"] += (
+                    WEIGHTS[method] / (RRF_K + len(counts))
+                    if mode == "hybrid"
+                    else value
+                )
+            order, fragment = document["fragments"].setdefault(
+                row["chunk_id"],
+                (
+                    [0.0],
+                    {
+                        "section": row["section"],
+                        "start_line": row["start_line"],
+                        "end_line": row["end_line"],
+                        "content": row["text"],
+                        "semantic_similarity": None,
+                        "matched_by": [],
+                    },
+                ),
+            )
+            fragment["matched_by"].append(method)
+            if method == "semantic":
+                fragment["semantic_similarity"] = value
+            order[0] += WEIGHTS[method] / (RRF_K + rank) if mode == "hybrid" else value
+
+    results = sorted(documents.values(), key=lambda item: -item["score"])[:limit]
+    for document in results:
+        best = sorted(document["fragments"].values(), key=lambda pair: -pair[0][0])
+        document["fragments"] = [
+            fragment for _, fragment in best[:fragments_per_document]
+        ]
+    return results
 
 
 def _indexed(root: Path) -> list[str]:

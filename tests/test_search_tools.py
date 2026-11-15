@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from rag import create_server, index, search
+from rag import create_server, get_document, index, search
 
 
 class FakeModel:
@@ -103,6 +103,47 @@ class SearchToolTest(unittest.TestCase):
             ),
         )
 
+    def test_long_document_does_not_crowd_out_other_documents(self):
+        # More fragments than one candidate batch, each a stronger match.
+        (self.root / "knowledge" / "a_long.md").write_text(
+            "\n\n".join(f"# Part {i}\n" + "target " * 6 for i in range(60)),
+            encoding="utf-8",
+        )
+        index(self.root)
+        for mode in ("hybrid", "semantic", "keyword"):
+            results = self.call(limit=3, mode=mode, fragments_per_document=3)["results"]
+            sources = [row["source"] for row in results]
+            self.assertEqual(len(set(sources)), 3, mode)
+            self.assertTrue(all(1 <= len(row["fragments"]) <= 3 for row in results))
+            if mode == "keyword":
+                self.assertEqual(sources[0], "knowledge/a_long.md")
+                self.assertEqual(len(results[0]["fragments"]), 3)
+        self.assertEqual(
+            len(self.call(limit=1, path_prefix="knowledge/a_long.md")["results"]), 1
+        )
+
+    def test_fragment_lines_locate_the_fragment_in_the_document(self):
+        (self.root / "knowledge" / "lines.md").write_text(
+            "# Intro\nnothing here\n\n# Details\n\nfirst line\nZXQ739 second line\n",
+            encoding="utf-8",
+        )
+        index(self.root)
+        (document,) = self.call(query="ZXQ739", mode="keyword")["results"]
+        (fragment,) = document["fragments"]
+        self.assertEqual((fragment["start_line"], fragment["end_line"]), (4, 7))
+        lines = fragment["end_line"] - fragment["start_line"] + 1
+        excerpt = get_document(
+            self.root, document["source"], fragment["start_line"], lines
+        )
+        self.assertEqual(
+            excerpt["content"], "# Details\n\nfirst line\nZXQ739 second line"
+        )
+        self.assertEqual(
+            fragment["content"], "# Details\n\nfirst line\nZXQ739 second line"
+        )
+        self.assertEqual(fragment["matched_by"], ["keyword"])
+        self.assertIsNone(fragment["semantic_similarity"])
+
     def test_modes_and_reindex(self):
         with self.assertRaises(ToolError):
             self.call(mode="invalid")
@@ -156,6 +197,12 @@ def search_tool_case():
 def test_invalid_search_limit(search_tool_case, limit):
     with pytest.raises(ToolError, match="limit musi być z zakresu 1..50"):
         search_tool_case.call(limit=limit)
+
+
+@pytest.mark.parametrize("fragments", [0, 11])
+def test_invalid_fragments_per_document(search_tool_case, fragments):
+    with pytest.raises(ToolError, match="fragments_per_document musi być"):
+        search_tool_case.call(fragments_per_document=fragments)
 
 
 @pytest.mark.parametrize("mode", ["hybrid", "semantic", "keyword"])

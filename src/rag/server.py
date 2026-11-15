@@ -42,10 +42,19 @@ def create_server(root: Path):
 
     @server.tool()
     def search_knowledge(
-        query: str, limit: int = 5, path_prefix: str | None = None, mode: str = "hybrid"
+        query: str,
+        limit: int = 5,
+        path_prefix: str | None = None,
+        mode: str = "hybrid",
+        fragments_per_document: int = 2,
     ) -> dict:
-        """Wyszukaj fragmenty: hybrid (RRF), semantic (cosinus), keyword (BM25); limit 1..50."""
-        return search(root, query, limit, path_prefix, mode)
+        """Wyszukaj dokumenty; każdy wynik to jeden dokument z najlepszymi fragmentami.
+
+        limit to liczba dokumentów (1..50), fragments_per_document to liczba
+        fragmentów na dokument (1..10). Tryby: hybrid (RRF), semantic (cosinus),
+        keyword (BM25). Fragment podaje start_line i end_line dla get_document.
+        """
+        return search(root, query, limit, path_prefix, mode, fragments_per_document)
 
     @server.tool()
     def list_documents(

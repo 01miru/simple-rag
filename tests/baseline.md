@@ -104,3 +104,35 @@ Pomiar z 8 listopada 2026 obejmuje funkcję `search_results`, w tym kodowanie za
 W tej próbie mediana różnic jest mniejsza od 50 ms. Wektory powstały z 40 rzeczywistych embeddingów tekstów i są wielokrotnie użyte; nie kodują indywidualnych identyfikatorów rekordów. Baza jest syntetyczna, nie służy do oceny jakości i nie dowodzi opóźnienia na reprezentatywnym korpusie. Pomiar nie obejmuje czasu budowy indeksu ani dodatkowej gałęzi n-gramowej.
 
 Uruchomienie: `RAG_COST_TEST=1 uv run pytest -s tests/test_fts_cost.py::test_full_query_cost`.
+
+## Wiele podobnych dokumentów i wyniki grupowane po dokumencie
+
+Od 15 listopada 2026 wyszukiwanie zwraca dokumenty z najlepszymi fragmentami, a RRF łączy pozycje dokumentów, nie fragmentów. Wcześniejsze sekcje opisują pomiary na wynikach fragmentowych; po zmianie wszystkie testy jakości przechodzą z tymi samymi progami.
+
+Nowa syntetyczna próba obejmuje 30 protokołów serwisowych o wspólnej strukturze i powtarzalnych sekcjach. Sześć pytań tematycznych ma po pięć pasujących dokumentów opisanych różnymi słowami; sześć pytań o model urządzenia (`KX-210` … `KX-235`) ma po pięć dokumentów z różnych tematów. Recall to odsetek oczekiwanych dokumentów wśród pierwszych `k` wyników. Model multilingual-e5-large, pomiar narzędziem `rag.evaluate`.
+
+| Pytania | Tryb | Recall@3 | Recall@5 | Recall@10 |
+| --- | --- | ---: | ---: | ---: |
+| tematyczne | semantic | 0,78 | 0,67 | 0,90 |
+| tematyczne | hybrid 0,8/0,2, k=1 | 0,78 | 0,60 | 0,87 |
+| tematyczne | keyword | 0,28 | 0,27 | 0,33 |
+| identyfikatory | semantic | 0,94 | 0,97 | 1,00 |
+| identyfikatory | hybrid 0,8/0,2, k=1 | 0,94 | 0,97 | 1,00 |
+| identyfikatory | keyword | 1,00 | 1,00 | 1,00 |
+
+Wyniki keyword i hybrid dla pytań tematycznych zmieniają się między uruchomieniami o kilka setnych, bo powtarzalne sekcje dają remisy BM25; dla hybrydy zaobserwowano Recall@5 0,57–0,60 i Recall@10 0,87–0,90.
+
+Sprawdzono też inne ustawienia hybrydy (waga semantyczna 0,8–0,4, stała RRF 1, 3, 10 i 60) na tej próbie oraz na wcześniejszych zestawach. Większa waga BM25 nie poprawiła pytań o identyfikatory przy `k=1` i obniżała wyniki tematyczne:
+
+| Hybryda | Tematyczne R@5 | Tematyczne R@10 | Identyfikatory R@5 | MRR@5, 6 pierwotnych pytań |
+| --- | ---: | ---: | ---: | ---: |
+| 0,8/0,2, k=1 (obecna) | 0,60 | 0,87 | 0,97 | 0,92 |
+| 0,7/0,3, k=1 | 0,53 | 0,87 | 0,97 | 0,83 |
+| 0,6/0,4, k=1 | 0,57 | 0,83 | 0,97 | 0,83 |
+| 0,5/0,5, k=1 | 0,50 | 0,83 | 0,97 | 0,83 |
+| 0,6/0,4, k=60 | 0,53 | 0,77 | 1,00 | 0,81 |
+| 0,5/0,5, k=60 | 0,47 | 0,77 | 1,00 | 0,81 |
+
+Wagi pozostawiono bez zmian. Na pytaniach tematycznych hybryda jest o jeden–dwa dokumenty słabsza od trybu semantic (30 oczekiwanych dokumentów łącznie), bo BM25 bez stemmingu dopasowuje głównie słowa wspólne dla wszystkich protokołów. Próba jest mała i syntetyczna, a pytania o identyfikatory zaprojektowano tak, by sprzyjały BM25; nie zastępuje pomiaru na rzeczywistych dokumentach. Przy pięciu pasujących dokumentach limit 5 znajduje około dwóch trzecich z nich, a limit 10 około 90%, dlatego do zbierania dokumentów pod wnioski warto używać wyższego limitu i kilku sformułowań.
+
+Uruchomienie: `RAG_QUALITY_TEST=1 uv run pytest -s tests/test_similar_documents.py`.
